@@ -62,7 +62,17 @@ jobs:
           tail -n 1000 plan-filtered.txt > plan-filtered-truncated.txt
           mv plan-filtered-truncated.txt plan-filtered.txt
 
-      - name: Find existing comment
+      - name: prepare-comment
+        run: |
+          {
+            echo '<!-- opentofu-plan -->'
+            echo '#### OpenTofu Plan'
+            echo '```'
+            cat plan-filtered.txt
+            echo '```'
+          } > comment-body.md
+
+      - name: find-comment
         uses: peter-evans/find-comment@v3
         id: fc
         with:
@@ -70,19 +80,17 @@ jobs:
           comment-author: 'github-actions[bot]'
           body-includes: '<!-- opentofu-plan -->'
 
-      - name: Comment PR with Plan
+      - name: delete-comment
+        if: steps.fc.outputs.comment-id != ''
+        run: gh api repos/${{ github.repository }}/issues/comments/${{ steps.fc.outputs.comment-id }} -X DELETE
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: comment
         uses: peter-evans/create-or-update-comment@v4
         with:
-          comment-id: ${{ steps.fc.outputs.comment-id }}
           issue-number: ${{ github.event.pull_request.number }}
-          body-path: plan-filtered.txt
-          body-prefix: |
-            <!-- opentofu-plan -->
-            #### OpenTofu Plan
-            ```
-          body-suffix: |
-            ```
-          edit-mode: replace
+          body-path: comment-body.md
 
   apply:
     name: OpenTofu Apply

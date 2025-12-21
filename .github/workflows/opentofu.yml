@@ -72,24 +72,11 @@ jobs:
             echo '```'
           } > comment-body.md
 
-      - name: find-comment
-        uses: peter-evans/find-comment@v3
-        id: fc
-        with:
-          issue-number: ${{ github.event.pull_request.number }}
-          comment-author: 'github-actions[bot]'
-          body-includes: '<!-- opentofu-plan -->'
-
-      - name: delete-comment
-        if: steps.fc.outputs.comment-id != ''
-        run: gh api repos/${{ github.repository }}/issues/comments/${{ steps.fc.outputs.comment-id }} -X DELETE
-        env:
-          GH_TOKEN: ${{ github.token }}
-
       - name: comment
-        uses: peter-evans/create-or-update-comment@v4
+        uses: johanwulf/replace-comment@v1
         with:
           issue-number: ${{ github.event.pull_request.number }}
+          body-includes: '<!-- opentofu-plan -->'
           body-path: comment-body.md
 
   apply:

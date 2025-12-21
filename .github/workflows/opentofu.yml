@@ -1,0 +1,98 @@
+name: OpenTofu
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: Environment for apply job
+        type: string
+        default: production
+    secrets:
+      SOPS_AGE_KEY:
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  test:
+    name: Pre-commit Tests
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/makeitworkcloud/runner:latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Initialize OpenTofu
+        run: tofu init -backend=false
+
+      - name: Run tests
+        run: make test
+
+  plan:
+    name: OpenTofu Plan
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/makeitworkcloud/runner:latest
+    if: github.event_name == 'pull_request'
+    needs: [test]
+    env:
+      SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: OpenTofu Plan
+        id: plan
+        run: |
+          make plan || true
+
+          sed -n '/OpenTofu will perform the following actions:/,$p' plan-output.txt > plan-filtered.txt
+
+          if [ ! -s plan-filtered.txt ]; then
+            grep -A 2 "No changes" plan-output.txt > plan-filtered.txt || echo "No plan output found" > plan-filtered.txt
+          fi
+
+          tail -n 1000 plan-filtered.txt > plan-filtered-truncated.txt
+          mv plan-filtered-truncated.txt plan-filtered.txt
+
+      - name: Comment PR with Plan
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const planOutput = fs.readFileSync('plan-filtered.txt', 'utf8');
+
+            const output = `#### OpenTofu Plan
+            \`\`\`
+            ${planOutput}
+            \`\`\`
+            `;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            });
+
+  apply:
+    name: OpenTofu Apply
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/makeitworkcloud/runner:latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [test]
+    environment: ${{ inputs.environment }}
+    env:
+      SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: OpenTofu Apply
+        run: make apply

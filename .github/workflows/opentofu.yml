@@ -21,6 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/makeitworkcloud/runner:latest
+    env:
+      SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

@@ -7,9 +7,25 @@ on:
         description: Environment for apply job
         type: string
         default: production
+      runs-on:
+        description: Runner label
+        type: string
+        default: ubuntu-latest
+      container:
+        description: Container image to use
+        type: string
+        default: ghcr.io/makeitworkcloud/runner:latest
+      setup-ssh:
+        description: Whether to setup SSH keys
+        type: boolean
+        default: false
     secrets:
       SOPS_AGE_KEY:
         required: true
+      SSH_PRIVATE_KEY:
+        required: false
+      SSH_KNOWN_HOSTS:
+        required: false
 
 permissions:
   contents: read
@@ -18,9 +34,9 @@ permissions:
 jobs:
   test:
     name: Pre-commit Tests
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs-on }}
     container:
-      image: ghcr.io/makeitworkcloud/runner:latest
+      image: ${{ inputs.container }}
     env:
       SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
     steps:
@@ -28,6 +44,17 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Install SSH key
+        if: ${{ inputs.setup-ssh }}
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+
+      - name: Copy SSH area
+        if: ${{ inputs.setup-ssh }}
+        run: cp -r /root/.ssh /github/home/
 
       - name: Initialize OpenTofu
         run: tofu init -backend=false
@@ -37,9 +64,9 @@ jobs:
 
   plan:
     name: OpenTofu Plan
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs-on }}
     container:
-      image: ghcr.io/makeitworkcloud/runner:latest
+      image: ${{ inputs.container }}
     if: github.event_name == 'pull_request'
     needs: [test]
     env:
@@ -47,6 +74,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Install SSH key
+        if: ${{ inputs.setup-ssh }}
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+
+      - name: Copy SSH area
+        if: ${{ inputs.setup-ssh }}
+        run: cp -r /root/.ssh /github/home/
 
       - name: OpenTofu Plan
         id: plan
@@ -81,9 +119,9 @@ jobs:
 
   apply:
     name: OpenTofu Apply
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs-on }}
     container:
-      image: ghcr.io/makeitworkcloud/runner:latest
+      image: ${{ inputs.container }}
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [test]
     environment: ${{ inputs.environment }}
@@ -92,6 +130,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Install SSH key
+        if: ${{ inputs.setup-ssh }}
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+
+      - name: Copy SSH area
+        if: ${{ inputs.setup-ssh }}
+        run: cp -r /root/.ssh /github/home/
 
       - name: OpenTofu Apply
         run: make apply

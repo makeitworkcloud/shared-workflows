@@ -18,8 +18,10 @@ jobs:
 
       - name: Install actionlint
         run: |
+          mkdir -p "$HOME/.local/bin"
           curl -sSL https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz | \
-            tar xz -C /usr/local/bin actionlint
+            tar xz -C "$HOME/.local/bin" actionlint
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Run pre-commit
         uses: pre-commit/action@v3.0.1

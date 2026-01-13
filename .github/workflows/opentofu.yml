@@ -14,7 +14,7 @@ on:
       container:
         description: Container image to use
         type: string
-        default: ghcr.io/makeitworkcloud/runner:latest
+        default: ghcr.io/makeitworkcloud/tfroot-runner:latest
       setup-ssh:
         description: Whether to setup SSH keys
         type: boolean
@@ -56,11 +56,16 @@ jobs:
         if: ${{ inputs.setup-ssh }}
         run: cp -r /root/.ssh /github/home/
 
+      - name: Fetch canonical pre-commit config
+        run: |
+          curl -sSL -o .pre-commit-config.yaml \
+            https://raw.githubusercontent.com/makeitworkcloud/images/main/tfroot-runner/pre-commit-config.yaml
+
       - name: Initialize OpenTofu
         run: tofu init -backend=false
 
       - name: Run tests
-        run: make test
+        run: pre-commit run -a
 
   plan:
     name: OpenTofu Plan

@@ -59,7 +59,7 @@ jobs:
       - name: Fetch canonical pre-commit config
         run: |
           curl -sSL -o .pre-commit-config.yaml \
-            https://raw.githubusercontent.com/makeitworkcloud/images/main/tfroot-runner/pre-commit-config.yaml
+            https://raw.githubusercontent.com/makeitworkcloud/shared-workflows/main/tfroot-pre-commit-config.yaml
 
       - name: Initialize OpenTofu
         run: tofu init -backend=false

@@ -14,12 +14,12 @@ Agents are authorized to push directly to `main` in this repository.
 
 Reusable workflow for OpenTofu/Terraform root module repositories (`tfroot-*`). It:
 
-1. Fetches canonical pre-commit config from `makeitworkcloud/images` repo
+1. Fetches canonical pre-commit config from `tfroot-pre-commit-config.yaml` in this repo
 2. Runs pre-commit tests using the `tfroot-runner` container image
 3. Posts plan output as PR comments
 4. Applies on merge to main
 
-**Pre-commit configuration is centralized** in `makeitworkcloud/images/tfroot-runner/pre-commit-config.yaml`. Do not add `.pre-commit-config.yaml` to individual tfroot repos.
+**Pre-commit configuration is centralized** in `tfroot-pre-commit-config.yaml`. Do not add `.pre-commit-config.yaml` to individual tfroot repos.
 
 ### Workflow Inputs
 

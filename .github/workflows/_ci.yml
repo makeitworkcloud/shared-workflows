@@ -10,7 +10,6 @@ on:
 
 jobs:
   lint:
-    name: Lint
     # ubuntu-latest while arc-dind runners are unavailable during the libvirt
     # migration. Revert to `arc` once the new k3s cluster has ARC runners up.
     runs-on: ubuntu-latest

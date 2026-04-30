@@ -14,8 +14,8 @@ Agents are authorized to push directly to `main` in this repository.
 
 Reusable workflow for OpenTofu/Terraform root module repositories (`tfroot-*`). It:
 
-1. Fetches canonical pre-commit config from `makeitworkcloud/images` repo
-2. Runs pre-commit tests using the `tfroot-runner` container image
+1. Fetches the canonical pre-commit config from `makeitworkcloud/images`
+2. Runs pre-commit on the `arc-tf` runner pod (which is itself the `tfroot-runner` image — no nested `container:` block)
 3. Posts plan output as PR comments
 4. Applies on merge to main
 
@@ -25,20 +25,19 @@ Reusable workflow for OpenTofu/Terraform root module repositories (`tfroot-*`). 
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `runs-on` | `ubuntu-latest` | Runner label |
-| `container` | `ghcr.io/makeitworkcloud/tfroot-runner:latest` | Container image |
-| `setup-ssh` | `false` | Whether to setup SSH keys |
-| `environment` | `production` | Environment for apply job |
+| `runs-on` | `arc-tf` | Runner label — the in-cluster ARC scale set whose pods run the tfroot-runner image |
+| `setup-ssh` | `false` | Provision an SSH key + known_hosts for libvirt-style root modules |
+| `environment` | `production` | Environment for the apply job |
 
-**Note:** `tfroot-libvirt` overrides `container` to use the internal OpenShift registry because it requires SSH access to libvirt hosts from a self-hosted runner.
+There is no `container` input. The `arc-tf` runner pod IS the image, so adding `container:` on top would nest a container inside a container — don't do it.
 
 ## Failure Modes
 
 ### "manifest unknown" or image pull failures
 
-The `tfroot-runner` image doesn't exist yet. Check:
-1. Did the `images` repo Build workflow succeed?
-2. Did the `images` repo Pull workflow import to OpenShift? (check logs for actual metadata, not "Unable to connect" errors)
+The `tfroot-runner` image is missing or the tag is wrong. Check:
+1. Did the `images` repo `buildah` workflow succeed for the latest commit?
+2. Is the runner template image tag in `kustomize-cluster/workloads/arc/arc-tf-application.yaml` resolvable on GHCR (`ghcr.io/makeitworkcloud/tfroot-runner:latest`)?
 
 ### Pre-commit hook failures
 

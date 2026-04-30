@@ -10,11 +10,7 @@ on:
       runs-on:
         description: Runner label
         type: string
-        default: ubuntu-latest
-      container:
-        description: Container image to use
-        type: string
-        default: ghcr.io/makeitworkcloud/tfroot-runner:latest
+        default: arc-tf
       setup-ssh:
         description: Whether to setup SSH keys
         type: boolean
@@ -35,8 +31,6 @@ jobs:
   test:
     name: Pre-commit Tests
     runs-on: ${{ inputs.runs-on }}
-    container:
-      image: ${{ inputs.container }}
     env:
       SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
     steps:
@@ -52,10 +46,6 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
 
-      - name: Copy SSH area
-        if: ${{ inputs.setup-ssh }}
-        run: cp -r /root/.ssh /github/home/
-
       - name: Fetch canonical pre-commit config
         run: |
           curl -sSL -o .pre-commit-config.yaml \
@@ -70,8 +60,6 @@ jobs:
   plan:
     name: OpenTofu Plan
     runs-on: ${{ inputs.runs-on }}
-    container:
-      image: ${{ inputs.container }}
     if: github.event_name == 'pull_request'
     needs: [test]
     env:
@@ -86,10 +74,6 @@ jobs:
         with:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
-
-      - name: Copy SSH area
-        if: ${{ inputs.setup-ssh }}
-        run: cp -r /root/.ssh /github/home/
 
       - name: OpenTofu Plan
         id: plan
@@ -125,8 +109,6 @@ jobs:
   apply:
     name: OpenTofu Apply
     runs-on: ${{ inputs.runs-on }}
-    container:
-      image: ${{ inputs.container }}
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [test]
     environment: ${{ inputs.environment }}
@@ -142,10 +124,6 @@ jobs:
         with:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
-
-      - name: Copy SSH area
-        if: ${{ inputs.setup-ssh }}
-        run: cp -r /root/.ssh /github/home/
 
       - name: OpenTofu Apply
         run: make apply

@@ -15,9 +15,10 @@ Agents are authorized to push directly to `main` in this repository.
 Reusable workflow for OpenTofu/Terraform root module repositories (`tfroot-*`). It:
 
 1. Fetches the canonical pre-commit config from `makeitworkcloud/images`
-2. Runs pre-commit on the `arc-tf` runner pod (which is itself the `tfroot-runner` image — no nested `container:` block)
-3. Posts plan output as PR comments
-4. Applies on merge to main
+2. Assumes the SOPS KMS role through GitHub OIDC/WIF
+3. Runs pre-commit on the `arc-tf` runner pod (which is itself the `tfroot-runner` image — no nested `container:` block)
+4. Posts plan output as PR comments
+5. Applies on merge to main
 
 **Pre-commit configuration is centralized** in `makeitworkcloud/images/tfroot-runner/pre-commit-config.yaml`. Do not add `.pre-commit-config.yaml` to individual tfroot repos.
 
@@ -28,6 +29,10 @@ Reusable workflow for OpenTofu/Terraform root module repositories (`tfroot-*`). 
 | `runs-on` | `arc-tf` | Runner label — the in-cluster ARC scale set whose pods run the tfroot-runner image |
 | `setup-ssh` | `false` | Provision an SSH key + known_hosts for libvirt-style root modules |
 | `environment` | `production` | Environment for the apply job |
+| `aws-region` | `us-west-2` | AWS region for SOPS KMS access |
+| `aws-role-to-assume` | `arn:aws:iam::332355796717:role/github-actions-sops-kms` | IAM role assumed via GitHub OIDC for SOPS KMS decrypt/encrypt |
+
+Caller workflows must grant `id-token: write` permissions for OIDC. `SOPS_AGE_KEY` is optional while SOPS files retain age recipients, but the preferred path is AWS KMS via OIDC.
 
 There is no `container` input. The `arc-tf` runner pod IS the image, so adding `container:` on top would nest a container inside a container — don't do it.
 

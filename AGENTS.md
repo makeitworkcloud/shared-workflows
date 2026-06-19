@@ -32,7 +32,7 @@ Reusable workflow for OpenTofu/Terraform root module repositories (`tfroot-*`). 
 | `aws-region` | `us-west-2` | AWS region for SOPS KMS access |
 | `aws-role-to-assume` | `arn:aws:iam::332355796717:role/github-actions-sops-kms` | IAM role assumed via GitHub OIDC for SOPS KMS decrypt/encrypt |
 
-Caller workflows must grant `id-token: write` permissions for OIDC. `SOPS_AGE_KEY` is optional while SOPS files retain age recipients, but the preferred path is AWS KMS via OIDC.
+Caller workflows must grant `id-token: write` permissions for OIDC. SOPS decryption for `tfroot-*` repos uses AWS KMS via OIDC; do not pass `SOPS_AGE_KEY` to this workflow.
 
 There is no `container` input. The `arc-tf` runner pod IS the image, so adding `container:` on top would nest a container inside a container — don't do it.
 

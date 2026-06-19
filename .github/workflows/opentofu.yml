@@ -24,8 +24,6 @@ on:
         type: string
         default: arn:aws:iam::332355796717:role/github-actions-sops-kms
     secrets:
-      SOPS_AGE_KEY:
-        required: false
       SSH_PRIVATE_KEY:
         required: false
       SSH_KNOWN_HOSTS:
@@ -39,8 +37,6 @@ permissions:
 jobs:
   test:
     runs-on: ${{ inputs.runs-on }}
-    env:
-      SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -75,8 +71,6 @@ jobs:
     runs-on: ${{ inputs.runs-on }}
     if: github.event_name == 'pull_request'
     needs: [test]
-    env:
-      SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -130,8 +124,6 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [test]
     environment: ${{ inputs.environment }}
-    env:
-      SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

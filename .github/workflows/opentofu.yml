@@ -29,32 +29,16 @@ on:
       SSH_KNOWN_HOSTS:
         required: false
 
-permissions:
-  contents: read
-  id-token: write
-  pull-requests: write
-
 jobs:
   test:
+    permissions:
+      contents: read
     runs-on: ${{ inputs.runs-on }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Configure AWS credentials for SOPS KMS
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ inputs.aws-role-to-assume }}
-          aws-region: ${{ inputs.aws-region }}
-
-      - name: Install SSH key
-        if: ${{ inputs.setup-ssh }}
-        uses: shimataro/ssh-key-action@v2
-        with:
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
 
       - name: Fetch canonical pre-commit config
         run: |
@@ -68,8 +52,12 @@ jobs:
         run: SKIP=no-commit-to-branch pre-commit run -a
 
   plan:
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
     runs-on: ${{ inputs.runs-on }}
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     needs: [test]
     steps:
       - name: Checkout
@@ -91,22 +79,43 @@ jobs:
       - name: OpenTofu Plan
         id: plan
         run: |
-          make plan || true
+          set -o pipefail
+          export SHELLOPTS
+          set +e
+          make plan
+          plan_exit_code=$?
+          set -e
 
-          sed -n '/OpenTofu will perform the following actions:/,$p' plan-output.txt > plan-filtered.txt
+          if [ -s plan-output.txt ]; then
+            sed -n '/OpenTofu will perform the following actions:/,$p' plan-output.txt > plan-filtered.txt
 
-          if [ ! -s plan-filtered.txt ]; then
-            grep -A 2 "No changes" plan-output.txt > plan-filtered.txt || echo "No plan output found" > plan-filtered.txt
+            if [ ! -s plan-filtered.txt ]; then
+              if ! grep -A 2 "No changes" plan-output.txt > plan-filtered.txt; then
+                cp plan-output.txt plan-filtered.txt
+              fi
+            fi
+          else
+            if [ "$plan_exit_code" -eq 0 ]; then
+              plan_exit_code=1
+            fi
+            echo "No plan output found" > plan-filtered.txt
           fi
+
+          printf 'exit-code=%s\n' "$plan_exit_code" >> "$GITHUB_OUTPUT"
 
           tail -n 1000 plan-filtered.txt > plan-filtered-truncated.txt
           mv plan-filtered-truncated.txt plan-filtered.txt
 
       - name: prepare-comment
+        env:
+          PLAN_EXIT_CODE: ${{ steps.plan.outputs.exit-code }}
         run: |
           {
             echo '<!-- opentofu-plan -->'
             echo '#### OpenTofu Plan'
+            if [ "$PLAN_EXIT_CODE" -ne 0 ]; then
+              echo "OpenTofu plan failed with exit code $PLAN_EXIT_CODE."
+            fi
             echo '```'
             cat plan-filtered.txt
             echo '```'
@@ -119,7 +128,16 @@ jobs:
           body-includes: '<!-- opentofu-plan -->'
           body-path: comment-body.md
 
+      - name: Fail if plan failed
+        if: steps.plan.outputs.exit-code != '0'
+        env:
+          PLAN_EXIT_CODE: ${{ steps.plan.outputs.exit-code }}
+        run: exit "$PLAN_EXIT_CODE"
+
   apply:
+    permissions:
+      contents: read
+      id-token: write
     runs-on: ${{ inputs.runs-on }}
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [test]

@@ -4,9 +4,10 @@
 
 This repository contains reusable GitHub Actions workflows for the `makeitworkcloud` organization.
 
-## Push Access
+## Contribution Workflow
 
-Agents are authorized to push directly to `main` in this repository.
+Use a branch and pull request for all changes. Do not push directly to `main`,
+and do not push any branch unless explicitly requested.
 
 ## Key Workflows
 
@@ -15,10 +16,10 @@ Agents are authorized to push directly to `main` in this repository.
 Reusable workflow for OpenTofu/Terraform root module repositories (`tfroot-*`). It:
 
 1. Fetches the canonical pre-commit config from `makeitworkcloud/images`
-2. Assumes the SOPS KMS role through GitHub OIDC/WIF
-3. Runs pre-commit on the `arc-tf` runner pod (which is itself the `tfroot-runner` image — no nested `container:` block)
-4. Posts plan output as PR comments
-5. Applies on merge to main
+2. Runs OpenTofu initialization and pre-commit without AWS or SSH credentials on the `arc-tf` runner pod (which is itself the `tfroot-runner` image - no nested `container:` block)
+3. Runs a credentialed plan only for same-repository pull requests; fork pull requests run only the uncredentialed test job
+4. Posts available plan output as a PR comment, reports a plan failure in that comment, and then fails the plan job
+5. Applies on any push to `main` after the test and configured environment gates pass
 
 **Pre-commit configuration is centralized** in `makeitworkcloud/images/tfroot-runner/pre-commit-config.yaml`. Do not add `.pre-commit-config.yaml` to individual tfroot repos.
 
@@ -32,7 +33,7 @@ Reusable workflow for OpenTofu/Terraform root module repositories (`tfroot-*`). 
 | `aws-region` | `us-west-2` | AWS region for SOPS KMS access |
 | `aws-role-to-assume` | `arn:aws:iam::332355796717:role/github-actions-sops-kms` | IAM role assumed via GitHub OIDC for SOPS KMS decrypt/encrypt |
 
-Caller workflows must grant `id-token: write` permissions for OIDC. SOPS decryption for `tfroot-*` repos uses AWS KMS via OIDC; do not pass `SOPS_AGE_KEY` to this workflow.
+The test job has only `contents: read` permission and does not receive AWS or SSH credentials. The plan job has `contents: read`, `id-token: write`, and `pull-requests: write`; the apply job has `contents: read` and `id-token: write`. Caller workflows must grant the permissions needed by credentialed plan and apply jobs. SOPS decryption for `tfroot-*` repos uses AWS KMS via OIDC; do not pass `SOPS_AGE_KEY` to this workflow.
 
 There is no `container` input. The `arc-tf` runner pod IS the image, so adding `container:` on top would nest a container inside a container — don't do it.
 

@@ -33,9 +33,12 @@ jobs:
 |----------|-------------|
 | `opentofu.yml` | OpenTofu/Terraform CI/CD with plan comments and apply on merge |
 
-## Container
+## Runners
 
-All workflows use `ghcr.io/makeitworkcloud/runner:latest`.
+Repository CI runs on `ubuntu-24.04`. The reusable OpenTofu workflow defaults
+to the `arc-tf` runner, whose pod uses the `tfroot-runner` image directly. That
+image uses Actions Runner `2.336.0`, above the `2.327.1` minimum required by
+the workflows' Node 24 actions.
 
 See [images](https://github.com/makeitworkcloud/images) for container source and included tools.
 

@@ -10,17 +10,17 @@ on:
 
 jobs:
   lint:
-    # ubuntu-latest while arc-dind runners are unavailable during the libvirt
+    # GitHub-hosted Ubuntu while arc-dind runners are unavailable during the libvirt
     # migration. Revert to `arc` once the new k3s cluster has ARC runners up.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7.0.0
         with:
-          python-version: "3.12"
+          python-version: "3.14"
 
       - name: Run pre-commit
         uses: pre-commit/action@v3.0.1

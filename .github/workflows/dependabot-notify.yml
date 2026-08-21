@@ -1,0 +1,41 @@
+---
+name: dependabot-notify
+
+on:
+  workflow_call:
+
+permissions: {}
+
+jobs:
+  alert:
+    runs-on: ubuntu-24.04
+    steps:
+      # No checkout needed: the pull_request event payload is read from
+      # $GITHUB_EVENT_PATH. curl -f makes the job fail loudly on non-2xx so
+      # a broken alert path is visible in the caller repo's Actions tab.
+      - name: Post Dependabot PR alert to Grafana
+        env:
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CLOUDFLARE_AUTH_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CLOUDFLARE_AUTH_CLIENT_SECRET }}
+          GRAFANA_TOKEN: ${{ secrets.GRAFANA_ALERTS_TOKEN }}
+        run: |
+          set -euo pipefail
+          payload="$(jq -c '[{
+            labels: {
+              alertname: "DependabotPR",
+              severity: "info",
+              repository: .repository.full_name
+            },
+            annotations: {
+              summary: "Dependabot opened PR #\(.pull_request.number) in \(.repository.full_name): \(.pull_request.title)",
+              url: .pull_request.html_url
+            },
+            generatorURL: .pull_request.html_url
+          }]' "$GITHUB_EVENT_PATH")"
+          curl -fsS --retry 3 -X POST \
+            -H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}" \
+            -H "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}" \
+            -H "Authorization: Bearer ${GRAFANA_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "${payload}" \
+            https://grafana.makeitwork.cloud/api/alertmanager/grafana/api/v1/alerts

@@ -37,6 +37,20 @@ The test job has only `contents: read` permission and does not receive AWS or SS
 
 There is no `container` input. The `arc-tf` runner pod IS the image, so adding `container:` on top would nest a container inside a container — don't do it.
 
+### dependabot-notify.yml
+
+Reusable workflow that posts a synthetic alert to the cluster Grafana's
+embedded Alertmanager API when a caller repo's `pull_request` event actor is
+`dependabot[bot]`. Callers are managed centrally by `tfroot-github`
+(`.github/workflows/dependabot-notify.yml` in each repo, `secrets: inherit`).
+
+Requires three Actions secrets in the caller repository (distributed by
+`tfroot-github`): `CLOUDFLARE_AUTH_CLIENT_ID` / `CLOUDFLARE_AUTH_CLIENT_SECRET`
+(the existing "GitHub Actions" Cloudflare Access service token, allowed by the
+path-scoped Access app on `grafana.makeitwork.cloud/api/alertmanager/grafana`)
+and `GRAFANA_ALERTS_TOKEN` (a Grafana service account token). No checkout and
+no `GITHUB_TOKEN` permissions are needed.
+
 ## Failure Modes
 
 ### "manifest unknown" or image pull failures

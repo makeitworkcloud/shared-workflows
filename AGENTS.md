@@ -70,6 +70,25 @@ If hooks fail with missing tools or config mismatches:
 1. Verify the canonical config in `images/tfroot-runner/pre-commit-config.yaml`
 2. Rebuild `tfroot-runner` image if hooks were added/updated
 
+### Checks never appear on a PR
+
+No checks at all (not even pending) means workflow runs were never created.
+Confirm with `gh run list --repo <repo> --branch <branch>` and by checking
+check-runs on the head SHA. Zero runs of every event type across the org's
+repos — especially when earlier PRs triggered normally — indicates a GitHub
+Actions event-delivery incident, not a workflow configuration problem. Check
+https://www.githubstatus.com before editing workflow files to "fix" it.
+Recover by closing and reopening the PR (`reopened`) or force-pushing the
+branch (`synchronize`); both are trigger types in these workflows.
+
+### dependabot-notify shows `skipped` on human PRs
+
+Expected. The notify job requires `github.actor == 'dependabot[bot]'`; on
+human-authored PRs the caller workflow runs and the job skips. A skipped
+notify job is not a failure — but `gh run watch --exit-status` treats a run
+whose jobs all skipped as unsuccessful, so watch the `ci`/`opentofu` run when
+validating a PR.
+
 ## Related Repositories
 
 - `images` - Contains `tfroot-runner` image and canonical pre-commit config

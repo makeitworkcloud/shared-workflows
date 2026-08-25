@@ -1,0 +1,36 @@
+---
+name: dependabot-notify
+
+on:
+  workflow_call:
+
+permissions: {}
+
+jobs:
+  alert:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Post Dependabot PR alert to Alertmanager
+        env:
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CLOUDFLARE_AUTH_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CLOUDFLARE_AUTH_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          payload="$(jq -c '[{
+            labels: {
+              alertname: "DependabotPR",
+              severity: "info",
+              repository: .repository.full_name
+            },
+            annotations: {
+              summary: "Dependabot opened PR #\(.pull_request.number) in \(.repository.full_name): \(.pull_request.title)",
+              url: .pull_request.html_url
+            },
+            generatorURL: .pull_request.html_url
+          }]' "$GITHUB_EVENT_PATH")"
+          curl -fsS --retry 3 -X POST \
+            -H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}" \
+            -H "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}" \
+            -H "Content-Type: application/json" \
+            -d "${payload}" \
+            https://alertmanager.makeitwork.cloud/api/v2/alerts

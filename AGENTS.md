@@ -37,19 +37,24 @@ The test job has only `contents: read` permission and does not receive AWS or SS
 
 There is no `container` input. The `arc-tf` runner pod IS the image, so adding `container:` on top would nest a container inside a container — don't do it.
 
-### dependabot-notify.yml
+### _dependabot-notify.yml
 
-Reusable workflow that posts a synthetic alert to the cluster Grafana's
-embedded Alertmanager API when a caller repo's `pull_request` event actor is
-`dependabot[bot]`. Callers are managed centrally by `tfroot-github`
+Reusable workflow that posts a synthetic alert to the cluster Alertmanager
+(kube-prometheus-stack, exposed as `alertmanager.makeitwork.cloud` behind a
+path-scoped Cloudflare Access app) when a caller repo's `pull_request` event
+actor is `dependabot[bot]`. Callers are managed centrally by `tfroot-github`
 (`.github/workflows/dependabot-notify.yml` in each repo, `secrets: inherit`).
 
-Requires three Actions secrets in the caller repository (distributed by
-`tfroot-github`): `CLOUDFLARE_AUTH_CLIENT_ID` / `CLOUDFLARE_AUTH_CLIENT_SECRET`
-(the existing "GitHub Actions" Cloudflare Access service token, allowed by the
-path-scoped Access app on `grafana.makeitwork.cloud/api/alertmanager/grafana`)
-and `GRAFANA_ALERTS_TOKEN` (a Grafana service account token). No checkout and
-no `GITHUB_TOKEN` permissions are needed.
+The reusable lives at the underscore-prefixed path because `tfroot-github`
+manages `.github/workflows/dependabot-notify.yml` as the caller in every
+repository, including this one — anything at the non-prefixed path here is
+overwritten on the next tfroot-github apply.
+
+Requires the `CLOUDFLARE_AUTH_CLIENT_ID` / `CLOUDFLARE_AUTH_CLIENT_SECRET`
+Actions secrets in the caller repository (the "GitHub Actions" Cloudflare
+Access service token, distributed by `tfroot-github`). Alertmanager itself
+has no auth; the Access app is the only gate. No checkout and no
+`GITHUB_TOKEN` permissions are needed.
 
 ## Failure Modes
 

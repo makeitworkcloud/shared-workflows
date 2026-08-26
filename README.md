@@ -46,7 +46,8 @@ See [images](https://github.com/makeitworkcloud/images) for container source and
 
 ## Repository Setup
 
-1. Grant `id-token: write` in the caller workflow so GitHub OIDC can assume the SOPS KMS role.
-2. Ensure the default `aws-role-to-assume` exists (`arn:aws:iam::332355796717:role/github-actions-sops-kms`) or pass another role ARN.
-3. Create caller workflow in `.github/workflows/`.
-4. Ensure repository has required files (e.g., `Makefile` with expected targets).
+1. Grant `id-token: write` in the caller workflow so GitHub OIDC can authenticate the cloud provider.
+2. For AWS roots, ensure the default `aws-role-to-assume` exists (`arn:aws:iam::332355796717:role/github-actions-sops-kms`) or pass another role ARN.
+3. For GCP roots, pass both `gcp-workload-identity-provider` and `gcp-service-account`; this selects Google Workload Identity Federation instead of AWS credentials.
+4. Create caller workflow in `.github/workflows/`.
+5. Ensure repository has required files (e.g., `Makefile` with expected targets).

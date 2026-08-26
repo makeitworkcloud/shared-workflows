@@ -32,8 +32,10 @@ Reusable workflow for OpenTofu/Terraform root module repositories (`tfroot-*`). 
 | `environment` | `production` | Environment for the apply job |
 | `aws-region` | `us-west-2` | AWS region for SOPS KMS access |
 | `aws-role-to-assume` | `arn:aws:iam::332355796717:role/github-actions-sops-kms` | IAM role assumed via GitHub OIDC for SOPS KMS decrypt/encrypt |
+| `gcp-workload-identity-provider` | empty | Google Workload Identity Provider resource name; when set, it replaces AWS authentication |
+| `gcp-service-account` | empty | Google service account to impersonate through Workload Identity Federation |
 
-The test job has only `contents: read` permission and does not receive AWS or SSH credentials. The plan job has `contents: read`, `id-token: write`, and `pull-requests: write`; the apply job has `contents: read` and `id-token: write`. Caller workflows must grant the permissions needed by credentialed plan and apply jobs. SOPS decryption for `tfroot-*` repos uses AWS KMS via OIDC; do not pass `SOPS_AGE_KEY` to this workflow.
+The test job has only `contents: read` permission and does not receive cloud or SSH credentials. The plan job has `contents: read`, `id-token: write`, and `pull-requests: write`; the apply job has `contents: read` and `id-token: write`. Caller workflows must grant the permissions needed by credentialed plan and apply jobs. By default, SOPS decryption for `tfroot-*` repos uses AWS KMS via OIDC; do not pass `SOPS_AGE_KEY` to this workflow. Set both GCP inputs to use Google Workload Identity Federation instead.
 
 There is no `container` input. The `arc-tf` runner pod IS the image, so adding `container:` on top would nest a container inside a container — don't do it.
 

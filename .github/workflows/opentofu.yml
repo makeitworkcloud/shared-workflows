@@ -102,6 +102,8 @@ jobs:
           steps.terraform-docs.outputs.changed == 'true' &&
           github.event_name == 'pull_request' &&
           github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
@@ -109,7 +111,7 @@ jobs:
           git add -- README.md
           git diff --cached --quiet && exit 0
           git commit -m 'chore(docs): update Terraform documentation'
-          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+          git push origin "HEAD:$PR_HEAD_REF"
 
       - name: Run tests
         id: validation

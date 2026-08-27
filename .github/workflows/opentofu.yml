@@ -50,26 +50,22 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-
       - name: Fetch canonical pre-commit config
         id: fetch-config
         continue-on-error: true
         run: |
           curl -sSL -o .pre-commit-config.yaml \
             https://raw.githubusercontent.com/makeitworkcloud/images/main/tfroot-runner/pre-commit-config.yaml
-
       - name: Initialize OpenTofu
         id: initialize
         continue-on-error: true
         run: tofu init -backend=false
-
       - name: Generate Terraform docs
         id: terraform-docs
         continue-on-error: true
         run: |
           set -euo pipefail
           pre-commit run terraform_docs -a
-
           changed_files="$(
             {
               git diff --name-only
@@ -77,25 +73,20 @@ jobs:
               git ls-files --others --exclude-standard
             } | sort -u
           )"
-
           if [ -z "$changed_files" ]; then
             exit 0
           fi
-
           unexpected_files="$(printf '%s\n' "$changed_files" | grep -vx 'README.md' || true)"
           if [ -n "$unexpected_files" ]; then
             printf 'terraform_docs changed files other than README.md:\n%s\n' "$unexpected_files" >&2
             exit 1
           fi
-
           if [ "${{ github.event_name }}" != 'pull_request' ] || \
              [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
             echo 'Terraform documentation is out of date. Update README.md in the pull request branch.' >&2
             exit 1
           fi
-
           echo 'changed=true' >> "$GITHUB_OUTPUT"
-
       - name: Commit generated Terraform docs
         if: >-
           steps.terraform-docs.outcome == 'success' &&
@@ -112,12 +103,10 @@ jobs:
           git diff --cached --quiet && exit 0
           git commit -m 'chore(docs): update Terraform documentation'
           git push origin "HEAD:$PR_HEAD_REF"
-
       - name: Run tests
         id: validation
         continue-on-error: true
         run: SKIP=no-commit-to-branch pre-commit run -a
-
       - name: Report validation on pull request
         if: >-
           always() && github.event_name == 'pull_request' &&
@@ -138,28 +127,13 @@ jobs:
             const body = failed
               ? `${marker}\n## OpenTofu CI failed\n\nValidation failed. [View the workflow run](${workflowUrl}).`
               : `${marker}\n## OpenTofu CI passed\n\nValidation passed. [View the workflow run](${workflowUrl}).`;
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-            });
+            const { data: comments } = await github.rest.issues.listComments({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number });
             const existing = comments.find((comment) => comment.body?.includes(marker));
             if (existing) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existing.id,
-                body,
-              });
+              await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body });
             } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body,
-              });
+              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body });
             }
-
       - name: Mark validation failed
         if: >-
           always() &&
@@ -183,28 +157,24 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.ref }}
-
       - name: Configure AWS credentials for SOPS KMS
         if: inputs.gcp-workload-identity-provider == ''
         uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
         with:
           role-to-assume: ${{ inputs.aws-role-to-assume }}
           aws-region: ${{ inputs.aws-region }}
-
       - name: Configure Google credentials through Workload Identity Federation
         if: inputs.gcp-workload-identity-provider != ''
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           workload_identity_provider: ${{ inputs.gcp-workload-identity-provider }}
           service_account: ${{ inputs.gcp-service-account }}
-
       - name: Install SSH key
         if: ${{ inputs.setup-ssh }}
         uses: shimataro/ssh-key-action@87a8f067114a8ce263df83e9ed5c849953548bc3 # v2.8.1
         with:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
-
       - name: OpenTofu Plan
         id: plan
         run: |
@@ -217,7 +187,6 @@ jobs:
 
           if [ -s plan-output.txt ]; then
             sed -n "/OpenTofu will perform the following actions:/,\$p" plan-output.txt > plan-filtered.txt
-
             if [ ! -s plan-filtered.txt ]; then
               if ! grep -A 2 "No changes" plan-output.txt > plan-filtered.txt; then
                 cp plan-output.txt plan-filtered.txt
@@ -232,15 +201,11 @@ jobs:
 
           sed -E \
             -e '/(secret|token|password|private[_ -]?key|credential|authorization|access[_ -]?key|client[_ -]?secret|kubeconfig|sops)/I c\[REDACTED: potentially sensitive plan output]' \
-            -e 's/```/\\`\\`\\`/g' \
             plan-filtered.txt > plan-filtered-redacted.txt
           mv plan-filtered-redacted.txt plan-filtered.txt
-
           printf 'exit-code=%s\n' "$plan_exit_code" >> "$GITHUB_OUTPUT"
-
           tail -n 1000 plan-filtered.txt > plan-filtered-truncated.txt
           mv plan-filtered-truncated.txt plan-filtered.txt
-
       - name: prepare-comment
         env:
           PLAN_EXIT_CODE: ${{ steps.plan.outputs.exit-code }}
@@ -251,18 +216,16 @@ jobs:
             if [ "$PLAN_EXIT_CODE" -ne 0 ]; then
               echo "OpenTofu plan failed with exit code $PLAN_EXIT_CODE."
             fi
-            echo '```'
+            echo '````'
             cat plan-filtered.txt
-            echo '```'
+            echo '````'
           } > comment-body.md
-
       - name: comment
         uses: johanwulf/replace-comment@73e5abab2457a7742d94f71355f878f25e950c71 # v1.0.1
         with:
           issue-number: ${{ github.event.pull_request.number }}
           body-includes: '<!-- opentofu-plan -->'
           body-path: comment-body.md
-
       - name: Fail if plan failed
         if: steps.plan.outputs.exit-code != '0'
         env:
@@ -280,27 +243,23 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
       - name: Configure AWS credentials for SOPS KMS
         if: inputs.gcp-workload-identity-provider == ''
         uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
         with:
           role-to-assume: ${{ inputs.aws-role-to-assume }}
           aws-region: ${{ inputs.aws-region }}
-
       - name: Configure Google credentials through Workload Identity Federation
         if: inputs.gcp-workload-identity-provider != ''
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           workload_identity_provider: ${{ inputs.gcp-workload-identity-provider }}
           service_account: ${{ inputs.gcp-service-account }}
-
       - name: Install SSH key
         if: ${{ inputs.setup-ssh }}
         uses: shimataro/ssh-key-action@87a8f067114a8ce263df83e9ed5c849953548bc3 # v2.8.1
         with:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
-
       - name: OpenTofu Apply
         run: make apply

@@ -216,7 +216,7 @@ jobs:
           set -e
 
           if [ -s plan-output.txt ]; then
-            sed -n '/OpenTofu will perform the following actions:/,$p' plan-output.txt > plan-filtered.txt
+            sed -n "/OpenTofu will perform the following actions:/,\$p" plan-output.txt > plan-filtered.txt
 
             if [ ! -s plan-filtered.txt ]; then
               if ! grep -A 2 "No changes" plan-output.txt > plan-filtered.txt; then

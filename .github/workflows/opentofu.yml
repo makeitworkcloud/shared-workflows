@@ -45,16 +45,22 @@ jobs:
     runs-on: ${{ inputs.runs-on }}
     steps:
       - name: Checkout
+        id: checkout
+        continue-on-error: true
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Fetch canonical pre-commit config
+        id: fetch-config
+        continue-on-error: true
         run: |
           curl -sSL -o .pre-commit-config.yaml \
             https://raw.githubusercontent.com/makeitworkcloud/images/main/tfroot-runner/pre-commit-config.yaml
 
       - name: Initialize OpenTofu
+        id: initialize
+        continue-on-error: true
         run: tofu init -backend=false
 
       - name: Run tests
@@ -68,7 +74,11 @@ jobs:
           github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          VALIDATION_FAILED: ${{ steps.validation.outcome == 'failure' }}
+          VALIDATION_FAILED: >-
+            ${{ steps.checkout.outcome == 'failure' ||
+                steps.fetch-config.outcome == 'failure' ||
+                steps.initialize.outcome == 'failure' ||
+                steps.validation.outcome == 'failure' }}
         with:
           script: |
             const marker = '<!-- opentofu-ci-status -->';
@@ -100,7 +110,12 @@ jobs:
             }
 
       - name: Mark validation failed
-        if: always() && steps.validation.outcome == 'failure'
+        if: >-
+          always() &&
+          (steps.checkout.outcome == 'failure' ||
+           steps.fetch-config.outcome == 'failure' ||
+           steps.initialize.outcome == 'failure' ||
+           steps.validation.outcome == 'failure')
         run: exit 1
 
   plan:

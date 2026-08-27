@@ -41,6 +41,7 @@ jobs:
   test:
     permissions:
       contents: read
+      pull-requests: write
     runs-on: ${{ inputs.runs-on }}
     steps:
       - name: Checkout
@@ -57,7 +58,50 @@ jobs:
         run: tofu init -backend=false
 
       - name: Run tests
+        id: validation
+        continue-on-error: true
         run: SKIP=no-commit-to-branch pre-commit run -a
+
+      - name: Report validation on pull request
+        if: >-
+          always() && github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          VALIDATION_FAILED: ${{ steps.validation.outcome == 'failure' }}
+        with:
+          script: |
+            const marker = '<!-- opentofu-ci-status -->';
+            const failed = process.env.VALIDATION_FAILED === 'true';
+            const workflowUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = failed
+              ? `${marker}\n## OpenTofu CI failed\n\nValidation failed. [View the workflow run](${workflowUrl}).`
+              : `${marker}\n## OpenTofu CI passed\n\nValidation passed. [View the workflow run](${workflowUrl}).`;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find((comment) => comment.body?.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+      - name: Mark validation failed
+        if: always() && steps.validation.outcome == 'failure'
+        run: exit 1
 
   plan:
     permissions:

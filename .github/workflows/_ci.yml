@@ -10,6 +10,9 @@ on:
 
 jobs:
   lint:
+    permissions:
+      contents: read
+      pull-requests: write
     # GitHub-hosted Ubuntu while arc-dind runners are unavailable during the libvirt
     # migration. Revert to `arc` once the new k3s cluster has ARC runners up.
     runs-on: ubuntu-24.04
@@ -23,4 +26,60 @@ jobs:
           python-version: "3.14"
 
       - name: Run pre-commit
-        uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
+        id: validation
+        continue-on-error: true
+        run: |
+          python -m pip install --disable-pip-version-check pre-commit
+          pre-commit run --all-files --show-diff-on-failure --color=never 2>&1 | tee validation.log
+
+      - name: Report validation on pull request
+        if: >-
+          always() && github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          VALIDATION_FAILED: ${{ steps.validation.outcome == 'failure' }}
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- shared-workflows-ci-status -->';
+            const failed = process.env.VALIDATION_FAILED === 'true';
+            const workflowUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            let body;
+            if (failed) {
+              const maxLength = 12000;
+              const log = fs.existsSync('validation.log')
+                ? fs.readFileSync('validation.log', 'utf8')
+                  .replace(/\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g, '***REDACTED***')
+                  .replace(/```/g, '\\`\\`\\`')
+                : 'No validation output was captured.';
+              const excerpt = log.length > maxLength ? log.slice(-maxLength) : log;
+              body = `${marker}\n## Shared workflows CI failed\n\nPre-commit validation failed. [View the workflow run](${workflowUrl}).\n\n<details><summary>Validation output (redacted, last ${maxLength} characters)</summary>\n\n\`\`\`text\n${excerpt}\n\`\`\`\n</details>`;
+            } else {
+              body = `${marker}\n## Shared workflows CI passed\n\nPre-commit validation passed. [View the workflow run](${workflowUrl}).`;
+            }
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find((comment) => comment.body?.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+      - name: Mark validation failed
+        if: always() && steps.validation.outcome == 'failure'
+        run: exit 1

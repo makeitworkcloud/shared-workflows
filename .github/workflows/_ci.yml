@@ -29,6 +29,7 @@ jobs:
         id: validation
         continue-on-error: true
         run: |
+          set -o pipefail
           python -m pip install --disable-pip-version-check pre-commit
           pre-commit run --all-files --show-diff-on-failure --color=never 2>&1 | tee validation.log
 

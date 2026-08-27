@@ -65,7 +65,10 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
+          set +e
           pre-commit run terraform_docs -a
+          terraform_docs_exit_code=$?
+          set -e
           changed_files="$(
             {
               git diff --name-only
@@ -74,6 +77,9 @@ jobs:
             } | sort -u
           )"
           if [ -z "$changed_files" ]; then
+            if [ "$terraform_docs_exit_code" -ne 0 ]; then
+              exit "$terraform_docs_exit_code"
+            fi
             exit 0
           fi
           unexpected_files="$(printf '%s\n' "$changed_files" | grep -vx 'README.md' || true)"
@@ -87,6 +93,7 @@ jobs:
             exit 1
           fi
           echo 'changed=true' >> "$GITHUB_OUTPUT"
+          exit 0
       - name: Commit generated Terraform docs
         if: >-
           steps.terraform-docs.outcome == 'success' &&

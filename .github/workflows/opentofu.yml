@@ -40,7 +40,7 @@ on:
 jobs:
   test:
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
     runs-on: ${{ inputs.runs-on }}
     steps:
@@ -63,6 +63,56 @@ jobs:
         continue-on-error: true
         run: tofu init -backend=false
 
+      - name: Generate Terraform docs
+        id: terraform-docs
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          pre-commit run terraform_docs -a
+
+          changed_files="$(
+            {
+              git diff --name-only
+              git diff --cached --name-only
+              git ls-files --others --exclude-standard
+            } | sort -u
+          )"
+
+          if [ -z "$changed_files" ]; then
+            exit 0
+          fi
+
+          unexpected_files="$(printf '%s\n' "$changed_files" | grep -vx 'README.md' || true)"
+          if [ -n "$unexpected_files" ]; then
+            printf 'terraform_docs changed files other than README.md:\n%s\n' "$unexpected_files" >&2
+            exit 1
+          fi
+
+          if [ "${{ github.event_name }}" != 'pull_request' ] || \
+             [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
+            echo 'Terraform documentation is out of date. Update README.md in the pull request branch.' >&2
+            exit 1
+          fi
+
+          echo 'changed=true' >> "$GITHUB_OUTPUT"
+
+      - name: Commit generated Terraform docs
+        if: >-
+          steps.terraform-docs.outcome == 'success' &&
+          steps.terraform-docs.outputs.changed == 'true' &&
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- README.md
+          git diff --cached --quiet && exit 0
+          git commit -m 'chore(docs): update Terraform documentation'
+          git push origin "HEAD:$PR_HEAD_REF"
+
       - name: Run tests
         id: validation
         continue-on-error: true
@@ -78,6 +128,7 @@ jobs:
             ${{ steps.checkout.outcome == 'failure' ||
                 steps.fetch-config.outcome == 'failure' ||
                 steps.initialize.outcome == 'failure' ||
+                steps.terraform-docs.outcome == 'failure' ||
                 steps.validation.outcome == 'failure' }}
         with:
           script: |
@@ -115,6 +166,7 @@ jobs:
           (steps.checkout.outcome == 'failure' ||
            steps.fetch-config.outcome == 'failure' ||
            steps.initialize.outcome == 'failure' ||
+           steps.terraform-docs.outcome == 'failure' ||
            steps.validation.outcome == 'failure')
         run: exit 1
 
@@ -129,6 +181,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
 
       - name: Configure AWS credentials for SOPS KMS
         if: inputs.gcp-workload-identity-provider == ''

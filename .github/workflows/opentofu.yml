@@ -211,7 +211,7 @@ jobs:
           set -o pipefail
           export SHELLOPTS
           set +e
-          make plan
+          make plan 2>&1 | tee plan-output.txt
           plan_exit_code=$?
           set -e
 
@@ -229,6 +229,12 @@ jobs:
             fi
             echo "No plan output found" > plan-filtered.txt
           fi
+
+          sed -E \
+            -e '/(secret|token|password|private[_ -]?key|credential|authorization|access[_ -]?key|client[_ -]?secret|kubeconfig|sops)/I c\[REDACTED: potentially sensitive plan output]' \
+            -e 's/```/\\`\\`\\`/g' \
+            plan-filtered.txt > plan-filtered-redacted.txt
+          mv plan-filtered-redacted.txt plan-filtered.txt
 
           printf 'exit-code=%s\n' "$plan_exit_code" >> "$GITHUB_OUTPUT"
 

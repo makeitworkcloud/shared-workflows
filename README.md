@@ -31,7 +31,7 @@ jobs:
 
 | Workflow | Description |
 |----------|-------------|
-| `opentofu.yml` | OpenTofu/Terraform CI/CD with PR validation and an environment-gated apply on every push to `main` |
+| `opentofu.yml` | OpenTofu/Terraform CI/CD with PR validation and an apply on every push to `main` |
 
 Same-repository PRs run tests and a credentialed plan; fork PRs run tests only. A push to `main` runs tests followed by a fresh apply, which does not reuse the PR plan.
 

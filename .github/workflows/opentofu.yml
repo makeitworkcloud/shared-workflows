@@ -36,6 +36,8 @@ on:
         required: false
       SSH_KNOWN_HOSTS:
         required: false
+      NAMECHEAP_API_KEY:
+        required: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -198,6 +200,8 @@ jobs:
           known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
       - name: OpenTofu Plan
         id: plan
+        env:
+          NAMECHEAP_API_KEY: ${{ secrets.NAMECHEAP_API_KEY }}
         run: |
           set -o pipefail
           export SHELLOPTS
@@ -283,4 +287,6 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
       - name: OpenTofu Apply
+        env:
+          NAMECHEAP_API_KEY: ${{ secrets.NAMECHEAP_API_KEY }}
         run: make apply

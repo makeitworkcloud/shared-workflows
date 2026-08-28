@@ -27,6 +27,21 @@ jobs:
     uses: makeitworkcloud/shared-workflows/.github/workflows/opentofu.yml@main
 ```
 
+### Namecheap
+
+Only repositories that manage Namecheap resources should map their repository
+Actions secret into the reusable workflow secret:
+
+```yaml
+jobs:
+  opentofu:
+    uses: makeitworkcloud/shared-workflows/.github/workflows/opentofu.yml@main
+    secrets:
+      NAMECHEAP_API_KEY: ${{ secrets.NAMECHEAP_API_KEY }}
+```
+
+Do not add this mapping for consumers that do not use Namecheap.
+
 ## Available Workflows
 
 | Workflow | Description |

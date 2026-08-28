@@ -57,6 +57,9 @@ jobs:
       pull-requests: write
     runs-on: ${{ inputs.runs-on }}
     container: ${{ inputs.container-image || null }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout
         id: checkout
@@ -220,6 +223,9 @@ jobs:
       pull-requests: write
     runs-on: ${{ inputs.runs-on }}
     container: ${{ inputs.container-image || null }}
+    defaults:
+      run:
+        shell: bash
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     needs: [test]
     steps:
@@ -312,6 +318,9 @@ jobs:
       id-token: write
     runs-on: ${{ inputs.runs-on }}
     container: ${{ inputs.container-image || null }}
+    defaults:
+      run:
+        shell: bash
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [test]
     steps:

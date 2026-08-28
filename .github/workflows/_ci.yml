@@ -13,9 +13,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-    # GitHub-hosted Ubuntu while arc-dind runners are unavailable during the libvirt
-    # migration. Revert to `arc` once the new k3s cluster has ARC runners up.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -46,19 +44,16 @@ jobs:
             const marker = '<!-- shared-workflows-ci-status -->';
             const failed = process.env.VALIDATION_FAILED === 'true';
             const workflowUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            let body;
-            if (failed) {
-              const maxLength = 12000;
-              const log = fs.existsSync('validation.log')
-                ? fs.readFileSync('validation.log', 'utf8')
-                  .replace(/\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g, '***REDACTED***')
-                  .replace(/```/g, '\\`\\`\\`')
-                : 'No validation output was captured.';
-              const excerpt = log.length > maxLength ? log.slice(-maxLength) : log;
-              body = `${marker}\n## Shared workflows CI failed\n\nPre-commit validation failed. [View the workflow run](${workflowUrl}).\n\n<details><summary>Validation output (redacted, last ${maxLength} characters)</summary>\n\n\`\`\`text\n${excerpt}\n\`\`\`\n</details>`;
-            } else {
-              body = `${marker}\n## Shared workflows CI passed\n\nPre-commit validation passed. [View the workflow run](${workflowUrl}).`;
-            }
+            const maxLength = 12000;
+            const output = fs.existsSync('validation.log')
+              ? fs.readFileSync('validation.log', 'utf8')
+                .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '')
+                .replace(/\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g, '***REDACTED***')
+                .replace(/````/g, '\\`\\`\\`\\`')
+              : 'No validation output was captured.';
+            const excerpt = output.length > maxLength ? output.slice(-maxLength) : output;
+            const status = failed ? 'failed' : 'passed';
+            const body = `${marker}\n## Shared workflows CI ${status}\n\n[View the workflow run](${workflowUrl}).\n\n#### Validation output (redacted, last ${maxLength} characters)\n\n\`\`\`\`text\n${excerpt}\n\`\`\`\``;
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,

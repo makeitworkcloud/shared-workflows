@@ -42,6 +42,21 @@ jobs:
 
 Do not add this mapping for consumers that do not use Namecheap.
 
+### Cloudflare
+
+Only repositories that manage Cloudflare resources should map their repository
+Actions secret into the reusable workflow secret:
+
+```yaml
+jobs:
+  opentofu:
+    uses: makeitworkcloud/shared-workflows/.github/workflows/opentofu.yml@main
+    secrets:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+```
+
+Do not add this mapping for consumers that do not use Cloudflare.
+
 ## Available Workflows
 
 | Workflow | Description |

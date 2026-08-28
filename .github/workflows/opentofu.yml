@@ -38,6 +38,8 @@ on:
         required: false
       NAMECHEAP_API_KEY:
         required: false
+      CLOUDFLARE_API_TOKEN:
+        required: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -202,6 +204,7 @@ jobs:
         id: plan
         env:
           NAMECHEAP_API_KEY: ${{ secrets.NAMECHEAP_API_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           set -o pipefail
           export SHELLOPTS
@@ -289,4 +292,5 @@ jobs:
       - name: OpenTofu Apply
         env:
           NAMECHEAP_API_KEY: ${{ secrets.NAMECHEAP_API_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: make apply

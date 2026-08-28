@@ -49,6 +49,7 @@ jobs:
   test:
     permissions:
       contents: write
+      id-token: write
       pull-requests: write
     runs-on: ${{ inputs.runs-on }}
     steps:
@@ -58,6 +59,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref || github.sha }}
       - name: Fetch canonical pre-commit config
         id: fetch-config
@@ -103,6 +105,41 @@ jobs:
           fi
           echo 'changed=true' >> "$GITHUB_OUTPUT"
           exit 0
+      - name: Configure AWS credentials for generated Terraform docs
+        if: >-
+          steps.terraform-docs.outcome == 'success' &&
+          steps.terraform-docs.outputs.changed == 'true' &&
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: arn:aws:iam::332355796717:role/github-actions-opentofu-docs
+          aws-region: ${{ inputs.aws-region }}
+      - name: Get GitHub App key for generated Terraform docs
+        if: >-
+          steps.terraform-docs.outcome == 'success' &&
+          steps.terraform-docs.outputs.changed == 'true' &&
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        uses: aws-actions/aws-secretsmanager-get-secrets@33da984fe531194c1157993a528f0c28ecf9f946 # v2.2.1
+        with:
+          secret-ids: |
+            GITHUB_APP_PRIVATE_KEY, arn:aws:secretsmanager:us-west-2:332355796717:secret:xnoto-s-chart-updater-github-app-private-key-qP4Qr3
+      - name: Create GitHub App token for generated Terraform docs
+        id: github-app-token
+        if: >-
+          steps.terraform-docs.outcome == 'success' &&
+          steps.terraform-docs.outputs.changed == 'true' &&
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: '4745727'
+          private-key: ${{ env.GITHUB_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
       - name: Commit generated Terraform docs
         if: >-
           steps.terraform-docs.outcome == 'success' &&
@@ -110,6 +147,7 @@ jobs:
           github.event_name == 'pull_request' &&
           github.event.pull_request.head.repo.full_name == github.repository
         env:
+          GITHUB_APP_TOKEN: ${{ steps.github-app-token.outputs.token }}
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
           set -euo pipefail
@@ -118,7 +156,7 @@ jobs:
           git add -- README.md
           git diff --cached --quiet && exit 0
           git commit -m 'chore(docs): update Terraform documentation'
-          git push origin "HEAD:$PR_HEAD_REF"
+          git push "https://x-access-token:${GITHUB_APP_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:$PR_HEAD_REF"
       - name: Run tests
         id: validation
         continue-on-error: true

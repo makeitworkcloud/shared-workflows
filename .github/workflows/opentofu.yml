@@ -117,7 +117,9 @@ jobs:
       - name: Run tests
         id: validation
         continue-on-error: true
-        run: SKIP=no-commit-to-branch pre-commit run -a
+        run: |
+          set -o pipefail
+          SKIP=no-commit-to-branch pre-commit run -a --color=never 2>&1 | tee validation-output.txt
       - name: Report validation on pull request
         if: >-
           always() && github.event_name == 'pull_request' &&
@@ -132,12 +134,20 @@ jobs:
                 steps.validation.outcome == 'failure' }}
         with:
           script: |
+            const fs = require('fs');
             const marker = '<!-- opentofu-ci-status -->';
             const failed = process.env.VALIDATION_FAILED === 'true';
             const workflowUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const body = failed
-              ? `${marker}\n## OpenTofu CI failed\n\nValidation failed. [View the workflow run](${workflowUrl}).`
-              : `${marker}\n## OpenTofu CI passed\n\nValidation passed. [View the workflow run](${workflowUrl}).`;
+            const maxLength = 12000;
+            const output = fs.existsSync('validation-output.txt')
+              ? fs.readFileSync('validation-output.txt', 'utf8')
+                .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '')
+                .replace(/\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g, '***REDACTED***')
+                .replace(/````/g, '\\`\\`\\`\\`')
+              : 'No validation output was captured.';
+            const excerpt = output.length > maxLength ? output.slice(-maxLength) : output;
+            const status = failed ? 'failed' : 'passed';
+            const body = `${marker}\n## OpenTofu CI ${status}\n\n[View the workflow run](${workflowUrl}).\n\n#### Validation output (redacted, last ${maxLength} characters)\n\n\`\`\`\`text\n${excerpt}\n\`\`\`\``;
             const { data: comments } = await github.rest.issues.listComments({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number });
             const existing = comments.find((comment) => comment.body?.includes(marker));
             if (existing) {
@@ -210,9 +220,10 @@ jobs:
             echo "No plan output found" > plan-filtered.txt
           fi
 
-          sed -E \
-            -e '/(secret|token|password|private[_ -]?key|credential|authorization|access[_ -]?key|client[_ -]?secret|kubeconfig|sops)/I c\[REDACTED: potentially sensitive plan output]' \
-            plan-filtered.txt > plan-filtered-redacted.txt
+          sed -E $'s/\x1B\\[[0-?]*[ -\\/]*[@-~]//g' plan-filtered.txt |
+            sed -E \
+              -e '/(secret|token|password|private[_ -]?key|credential|authorization|access[_ -]?key|client[_ -]?secret|kubeconfig|sops)/I c\[REDACTED: potentially sensitive plan output]' \
+              > plan-filtered-redacted.txt
           mv plan-filtered-redacted.txt plan-filtered.txt
           printf 'exit-code=%s\n' "$plan_exit_code" >> "$GITHUB_OUTPUT"
           tail -n 1000 plan-filtered.txt > plan-filtered-truncated.txt
@@ -227,7 +238,7 @@ jobs:
             if [ "$PLAN_EXIT_CODE" -ne 0 ]; then
               echo "OpenTofu plan failed with exit code $PLAN_EXIT_CODE."
             fi
-            echo '````'
+            echo '````diff'
             cat plan-filtered.txt
             echo '````'
           } > comment-body.md

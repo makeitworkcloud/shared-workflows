@@ -11,6 +11,10 @@ on:
         description: Runner label
         type: string
         default: arc-tf
+      container-image:
+        description: Optional container image for GitHub-hosted runners
+        type: string
+        default: ""
       setup-ssh:
         description: Whether to setup SSH keys
         type: boolean
@@ -52,6 +56,7 @@ jobs:
       id-token: write
       pull-requests: write
     runs-on: ${{ inputs.runs-on }}
+    container: ${{ inputs.container-image || null }}
     steps:
       - name: Checkout
         id: checkout
@@ -214,6 +219,7 @@ jobs:
       id-token: write
       pull-requests: write
     runs-on: ${{ inputs.runs-on }}
+    container: ${{ inputs.container-image || null }}
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     needs: [test]
     steps:
@@ -305,6 +311,7 @@ jobs:
       contents: read
       id-token: write
     runs-on: ${{ inputs.runs-on }}
+    container: ${{ inputs.container-image || null }}
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [test]
     steps:

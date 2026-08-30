@@ -219,7 +219,7 @@ jobs:
             const maxLength = 12000;
             const output = fs.existsSync('validation-output.txt')
               ? fs.readFileSync('validation-output.txt', 'utf8')
-                .replace(/\[[0-?]*[ -/]*[@-~]/g, '')
+                .replace(/\\u001b\[[0-?]*[ -/]*[@-~]/g, '')
                 .replace(/\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g, '***REDACTED***')
                 .replace(/````/g, '\\`\\`\\`\\`')
               : 'No validation output was captured.';

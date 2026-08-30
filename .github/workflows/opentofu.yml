@@ -95,7 +95,6 @@ jobs:
             }
       - name: Checkout
         id: checkout
-        continue-on-error: true
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -103,17 +102,14 @@ jobs:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref || github.sha }}
       - name: Fetch canonical pre-commit config
         id: fetch-config
-        continue-on-error: true
         run: |
           curl -sSL -o .pre-commit-config.yaml \
             https://raw.githubusercontent.com/makeitworkcloud/images/main/tfroot-runner/pre-commit-config.yaml
       - name: Initialize OpenTofu
         id: initialize
-        continue-on-error: true
         run: tofu init -backend=false
       - name: Generate Terraform docs
         id: terraform-docs
-        continue-on-error: true
         run: |
           set -euo pipefail
           set +e
@@ -147,7 +143,6 @@ jobs:
           exit 0
       - name: Require GitHub App key for generated Terraform docs
         id: terraform-docs-key
-        continue-on-error: true
         if: >-
           steps.terraform-docs.outcome == 'success' &&
           steps.terraform-docs.outputs.changed == 'true' &&
@@ -193,7 +188,11 @@ jobs:
           git push "https://x-access-token:${GITHUB_APP_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:$PR_HEAD_REF"
       - name: Run tests
         id: validation
-        continue-on-error: true
+        if: >-
+          always() &&
+          steps.checkout.outcome == 'success' &&
+          steps.fetch-config.outcome == 'success' &&
+          steps.initialize.outcome == 'success'
         run: |
           set -o pipefail
           SKIP=no-commit-to-branch pre-commit run -a --color=never 2>&1 | tee validation-output.txt
@@ -248,16 +247,6 @@ jobs:
             } else {
               await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body });
             }
-      - name: Mark validation failed
-        if: >-
-          always() &&
-          (steps.checkout.outcome == 'failure' ||
-           steps.fetch-config.outcome == 'failure' ||
-           steps.initialize.outcome == 'failure' ||
-           steps.terraform-docs.outcome == 'failure' ||
-           steps.terraform-docs-key.outcome == 'failure' ||
-           steps.validation.outcome == 'failure')
-        run: exit 1
 
   plan:
     permissions:

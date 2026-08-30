@@ -56,6 +56,43 @@ jobs:
       DOCS_APP_KEY_AVAILABLE: ${{ secrets.CHART_UPDATER_GITHUB_APP_PRIVATE_KEY != '' }}
     runs-on: ${{ inputs.runs-on }}
     steps:
+      - name: Mark test run in progress
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const marker = '<!-- opentofu-ci-status -->';
+            const workflowUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const { data: comments } = await github.rest.issues.listComments({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number });
+            const existing = comments.find((comment) => comment.body?.includes(marker));
+            let previous = '';
+            if (existing) {
+              if (existing.body.includes('this comment will be updated when the run completes')) {
+                const match = existing.body.match(/<details><summary>Previous run output<\/summary>\n\n([\s\S]*)\n\n<\/details>\s*$/);
+                previous = match ? match[1].trim() : '';
+              } else {
+                previous = existing.body.replace(marker, '').trim();
+              }
+            }
+            const parts = [
+              marker,
+              '#### OpenTofu Test',
+              '',
+              'OpenTofu test is in progress; this comment will be updated when the run completes.',
+              '',
+              `[View the workflow run](${workflowUrl}).`,
+            ];
+            if (previous) {
+              parts.push('', '<details><summary>Previous run output</summary>', '', previous, '', '</details>');
+            }
+            const body = parts.join('\n');
+            if (existing) {
+              await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body });
+            }
       - name: Checkout
         id: checkout
         continue-on-error: true
@@ -188,7 +225,22 @@ jobs:
               : 'No validation output was captured.';
             const excerpt = output.length > maxLength ? output.slice(-maxLength) : output;
             const status = failed ? 'failed' : 'passed';
-            const body = `${marker}\n## OpenTofu CI ${status}\n\n[View the workflow run](${workflowUrl}).\n\n#### Validation output (redacted, last ${maxLength} characters)\n\n\`\`\`\`text\n${excerpt}\n\`\`\`\``;
+            const body = [
+              marker,
+              '#### OpenTofu Test',
+              '',
+              `OpenTofu test ${status}.`,
+              '',
+              `[View the workflow run](${workflowUrl}).`,
+              '',
+              '<details><summary>View run output</summary>',
+              '',
+              '````text',
+              excerpt,
+              '````',
+              '',
+              '</details>',
+            ].join('\n');
             const { data: comments } = await github.rest.issues.listComments({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number });
             const existing = comments.find((comment) => comment.body?.includes(marker));
             if (existing) {
@@ -216,6 +268,40 @@ jobs:
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     needs: [test]
     steps:
+      - name: Mark plan run in progress
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const marker = '<!-- opentofu-plan -->';
+            const workflowUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const { data: comments } = await github.rest.issues.listComments({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number });
+            const existing = comments.find((comment) => comment.body?.includes(marker));
+            let previous = '';
+            if (existing) {
+              if (existing.body.includes('this comment will be updated when the run completes')) {
+                const match = existing.body.match(/<details><summary>Previous run output<\/summary>\n\n([\s\S]*)\n\n<\/details>\s*$/);
+                previous = match ? match[1].trim() : '';
+              } else {
+                previous = existing.body.replace(marker, '').trim();
+              }
+            }
+            const parts = [
+              marker,
+              '#### OpenTofu Plan',
+              '',
+              'OpenTofu plan is in progress; this comment will be updated when the run completes.',
+              '',
+              `[View the workflow run](${workflowUrl}).`,
+            ];
+            if (previous) {
+              parts.push('', '<details><summary>Previous run output</summary>', '', previous, '', '</details>');
+            }
+            const body = parts.join('\n');
+            if (existing) {
+              await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body });
+            }
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -280,12 +366,22 @@ jobs:
           {
             echo '<!-- opentofu-plan -->'
             echo '#### OpenTofu Plan'
+            echo
             if [ "$PLAN_EXIT_CODE" -ne 0 ]; then
               echo "OpenTofu plan failed with exit code $PLAN_EXIT_CODE."
+            else
+              echo 'OpenTofu plan passed.'
             fi
+            echo
+            echo "[View the workflow run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)."
+            echo
+            echo '<details><summary>View run output</summary>'
+            echo
             echo '````diff'
             cat plan-filtered.txt
             echo '````'
+            echo
+            echo '</details>'
           } > comment-body.md
       - name: comment
         uses: johanwulf/replace-comment@73e5abab2457a7742d94f71355f878f25e950c71 # v1.0.1

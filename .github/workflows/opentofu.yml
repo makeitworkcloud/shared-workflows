@@ -333,15 +333,15 @@ jobs:
           set -o pipefail
           export SHELLOPTS
           set +e
-          make plan 2>&1 | tee plan-output.txt
+          make plan 2>&1 | tee plan-capture.txt
           plan_exit_code=$?
           set -e
 
-          if [ -s plan-output.txt ]; then
-            sed -n "/OpenTofu will perform the following actions:/,\$p" plan-output.txt > plan-filtered.txt
+          if [ -s plan-capture.txt ]; then
+            sed -n "/OpenTofu will perform the following actions:/,/^Plan: /p" plan-capture.txt > plan-filtered.txt
             if [ ! -s plan-filtered.txt ]; then
-              if ! grep -A 2 "No changes" plan-output.txt > plan-filtered.txt; then
-                cp plan-output.txt plan-filtered.txt
+              if ! grep -A 2 "No changes" plan-capture.txt > plan-filtered.txt; then
+                cp plan-capture.txt plan-filtered.txt
               fi
             fi
           else
@@ -351,7 +351,8 @@ jobs:
             echo "No plan output found" > plan-filtered.txt
           fi
 
-          sed -E $'s/\x1B\[[0-?]*[ -\/]*[@-~]//g' plan-filtered.txt |
+          tr -d '\000' < plan-filtered.txt |
+            sed -E $'s/\x1B\[[0-?]*[ -\/]*[@-~]//g' |
             sed -E \
               -e '/(secret|token|password|private[_ -]?key|credential|authorization|access[_ -]?key|client[_ -]?secret|kubeconfig|sops)/I c\[REDACTED: potentially sensitive plan output]' \
               > plan-filtered-redacted.txt

@@ -70,12 +70,13 @@ jobs:
       CHART_UPDATER_GITHUB_APP_PRIVATE_KEY: ${{ secrets.CHART_UPDATER_GITHUB_APP_PRIVATE_KEY }}
 ```
 
-The workflow automatically commits changes from the canonical `terraform_docs`,
-`terraform_fmt`, `end-of-file-fixer`, `mixed-line-ending`, and
-`trailing-whitespace` hooks. The key is provisioned by `tfroot-github` to
-approved repositories only. Without it, pre-commit drift fails the `test` job
-and the pull request branch must be updated manually. Fork pull requests never
-receive secrets and always fail on drift.
+The workflow runs the canonical pre-commit suite once on each workflow run. If
+it changes tracked files on a same-repository pull request, the workflow commits
+the fixes and the resulting push starts the confirmation run. The key is
+provisioned by `tfroot-github` to approved repositories only. Without it,
+pre-commit drift fails the `test` job and the pull request branch must be
+updated manually. Fork pull requests never receive secrets and always fail on
+drift.
 
 ## Available Workflows
 

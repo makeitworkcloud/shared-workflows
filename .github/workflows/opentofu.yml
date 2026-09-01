@@ -108,16 +108,17 @@ jobs:
       - name: Initialize OpenTofu
         id: initialize
         run: tofu init -backend=false
-      - name: Apply automatic pre-commit fixes
+      - name: Run pre-commit
+        id: validation
+        run: |
+          set -o pipefail
+          SKIP=no-commit-to-branch pre-commit run --all-files --color=never 2>&1 | tee validation-output.txt
+      - name: Detect automatic pre-commit fixes
         id: pre-commit-fixes
+        if: >-
+          always() && steps.validation.outcome == 'failure'
         run: |
           set -euo pipefail
-          hook_failed=0
-          for hook in terraform_docs terraform_fmt end-of-file-fixer mixed-line-ending trailing-whitespace; do
-            if ! pre-commit run "$hook" --all-files; then
-              hook_failed=1
-            fi
-          done
           changed_files="$(
             {
               git diff --name-only
@@ -125,7 +126,7 @@ jobs:
             } | sort -u
           )"
           if [ -z "$changed_files" ]; then
-            exit "$hook_failed"
+            exit 0
           fi
           if [ "${{ github.event_name }}" != 'pull_request' ] || \
              [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
@@ -136,6 +137,7 @@ jobs:
       - name: Require GitHub App key for automatic pre-commit fixes
         id: pre-commit-fixes-key
         if: >-
+          always() &&
           steps.pre-commit-fixes.outcome == 'success' &&
           steps.pre-commit-fixes.outputs.changed == 'true' &&
           github.event_name == 'pull_request' &&
@@ -147,6 +149,7 @@ jobs:
       - name: Create GitHub App token for automatic pre-commit fixes
         id: github-app-token
         if: >-
+          always() &&
           steps.pre-commit-fixes.outcome == 'success' &&
           steps.pre-commit-fixes.outputs.changed == 'true' &&
           github.event_name == 'pull_request' &&
@@ -162,6 +165,7 @@ jobs:
           permission-pull-requests: write
       - name: Commit automatic pre-commit fixes
         if: >-
+          always() &&
           steps.pre-commit-fixes.outcome == 'success' &&
           steps.pre-commit-fixes.outputs.changed == 'true' &&
           github.event_name == 'pull_request' &&
@@ -178,16 +182,6 @@ jobs:
           git diff --cached --quiet && exit 0
           git commit -m 'chore: apply pre-commit fixes'
           git push "https://x-access-token:${GITHUB_APP_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:$PR_HEAD_REF"
-      - name: Run tests
-        id: validation
-        if: >-
-          always() &&
-          steps.checkout.outcome == 'success' &&
-          steps.fetch-config.outcome == 'success' &&
-          steps.initialize.outcome == 'success'
-        run: |
-          set -o pipefail
-          SKIP=no-commit-to-branch pre-commit run -a --color=never 2>&1 | tee validation-output.txt
       - name: Report validation on pull request
         if: >-
           always() && github.event_name == 'pull_request' &&
@@ -198,9 +192,9 @@ jobs:
             ${{ steps.checkout.outcome == 'failure' ||
                 steps.fetch-config.outcome == 'failure' ||
                 steps.initialize.outcome == 'failure' ||
+                steps.validation.outcome == 'failure' ||
                 steps.pre-commit-fixes.outcome == 'failure' ||
-                steps.pre-commit-fixes-key.outcome == 'failure' ||
-                steps.validation.outcome == 'failure' }}
+                steps.pre-commit-fixes-key.outcome == 'failure' }}
         with:
           script: |
             const fs = require('fs');

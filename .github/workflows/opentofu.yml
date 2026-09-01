@@ -108,55 +108,47 @@ jobs:
       - name: Initialize OpenTofu
         id: initialize
         run: tofu init -backend=false
-      - name: Generate Terraform docs
-        id: terraform-docs
+      - name: Apply automatic pre-commit fixes
+        id: pre-commit-fixes
         run: |
           set -euo pipefail
-          set +e
-          pre-commit run terraform_docs -a
-          terraform_docs_exit_code=$?
-          set -e
+          hook_failed=0
+          for hook in terraform_docs terraform_fmt end-of-file-fixer mixed-line-ending trailing-whitespace; do
+            if ! pre-commit run "$hook" --all-files; then
+              hook_failed=1
+            fi
+          done
           changed_files="$(
             {
               git diff --name-only
               git diff --cached --name-only
-              git ls-files --others --exclude-standard
             } | sort -u
           )"
           if [ -z "$changed_files" ]; then
-            if [ "$terraform_docs_exit_code" -ne 0 ]; then
-              exit "$terraform_docs_exit_code"
-            fi
-            exit 0
-          fi
-          unexpected_files="$(printf '%s\n' "$changed_files" | grep -vx 'README.md' || true)"
-          if [ -n "$unexpected_files" ]; then
-            printf 'terraform_docs changed files other than README.md:\n%s\n' "$unexpected_files" >&2
-            exit 1
+            exit "$hook_failed"
           fi
           if [ "${{ github.event_name }}" != 'pull_request' ] || \
              [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
-            echo 'Terraform documentation is out of date. Update README.md in the pull request branch.' >&2
+            echo 'Pre-commit applied fixes. Update the pull request branch.' >&2
             exit 1
           fi
           echo 'changed=true' >> "$GITHUB_OUTPUT"
-          exit 0
-      - name: Require GitHub App key for generated Terraform docs
-        id: terraform-docs-key
+      - name: Require GitHub App key for automatic pre-commit fixes
+        id: pre-commit-fixes-key
         if: >-
-          steps.terraform-docs.outcome == 'success' &&
-          steps.terraform-docs.outputs.changed == 'true' &&
+          steps.pre-commit-fixes.outcome == 'success' &&
+          steps.pre-commit-fixes.outputs.changed == 'true' &&
           github.event_name == 'pull_request' &&
           github.event.pull_request.head.repo.full_name == github.repository &&
           env.DOCS_APP_KEY_AVAILABLE != 'true'
         run: |
-          echo 'Terraform documentation is out of date and CHART_UPDATER_GITHUB_APP_PRIVATE_KEY is not available to commit it. Update README.md in the pull request branch.' >&2
+          echo 'Pre-commit applied fixes and CHART_UPDATER_GITHUB_APP_PRIVATE_KEY is not available to commit them. Update the pull request branch.' >&2
           exit 1
-      - name: Create GitHub App token for generated Terraform docs
+      - name: Create GitHub App token for automatic pre-commit fixes
         id: github-app-token
         if: >-
-          steps.terraform-docs.outcome == 'success' &&
-          steps.terraform-docs.outputs.changed == 'true' &&
+          steps.pre-commit-fixes.outcome == 'success' &&
+          steps.pre-commit-fixes.outputs.changed == 'true' &&
           github.event_name == 'pull_request' &&
           github.event.pull_request.head.repo.full_name == github.repository &&
           env.DOCS_APP_KEY_AVAILABLE == 'true'
@@ -168,10 +160,10 @@ jobs:
           repositories: ${{ github.event.repository.name }}
           permission-contents: write
           permission-pull-requests: write
-      - name: Commit generated Terraform docs
+      - name: Commit automatic pre-commit fixes
         if: >-
-          steps.terraform-docs.outcome == 'success' &&
-          steps.terraform-docs.outputs.changed == 'true' &&
+          steps.pre-commit-fixes.outcome == 'success' &&
+          steps.pre-commit-fixes.outputs.changed == 'true' &&
           github.event_name == 'pull_request' &&
           github.event.pull_request.head.repo.full_name == github.repository &&
           env.DOCS_APP_KEY_AVAILABLE == 'true'
@@ -182,9 +174,9 @@ jobs:
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -- README.md
+          git add -u
           git diff --cached --quiet && exit 0
-          git commit -m 'chore(docs): update Terraform documentation'
+          git commit -m 'chore: apply pre-commit fixes'
           git push "https://x-access-token:${GITHUB_APP_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:$PR_HEAD_REF"
       - name: Run tests
         id: validation
@@ -206,8 +198,8 @@ jobs:
             ${{ steps.checkout.outcome == 'failure' ||
                 steps.fetch-config.outcome == 'failure' ||
                 steps.initialize.outcome == 'failure' ||
-                steps.terraform-docs.outcome == 'failure' ||
-                steps.terraform-docs-key.outcome == 'failure' ||
+                steps.pre-commit-fixes.outcome == 'failure' ||
+                steps.pre-commit-fixes-key.outcome == 'failure' ||
                 steps.validation.outcome == 'failure' }}
         with:
           script: |

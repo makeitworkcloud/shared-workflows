@@ -57,11 +57,10 @@ jobs:
 
 Do not add this mapping for consumers that do not use Cloudflare.
 
-### Generated documentation commits
+### Automatic pre-commit fix commits
 
 Repositories whose same-repository pull requests should receive automatic
-Terraform-docs `README.md` commits map the centrally distributed chart updater
-GitHub App key:
+pre-commit fixes map the centrally distributed chart updater GitHub App key:
 
 ```yaml
 jobs:
@@ -71,10 +70,12 @@ jobs:
       CHART_UPDATER_GITHUB_APP_PRIVATE_KEY: ${{ secrets.CHART_UPDATER_GITHUB_APP_PRIVATE_KEY }}
 ```
 
-The key is provisioned by `tfroot-github` to approved repositories only. Without
-it, generated-documentation drift fails the `test` job and the README must be
-updated manually. Fork pull requests never receive secrets and always fail on
-drift.
+The workflow automatically commits changes from the canonical `terraform_docs`,
+`terraform_fmt`, `end-of-file-fixer`, `mixed-line-ending`, and
+`trailing-whitespace` hooks. The key is provisioned by `tfroot-github` to
+approved repositories only. Without it, pre-commit drift fails the `test` job
+and the pull request branch must be updated manually. Fork pull requests never
+receive secrets and always fail on drift.
 
 ## Available Workflows
 

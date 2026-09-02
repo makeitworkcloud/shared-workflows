@@ -78,11 +78,40 @@ pre-commit drift fails the `test` job and the pull request branch must be
 updated manually. Fork pull requests never receive secrets and always fail on
 drift.
 
+### OpenCode
+
+The OpenCode workflow is called from a repository-local, comment-triggered
+workflow. It checks out the caller repository, stages that repository's agent
+and skill definitions, and runs a pinned OpenCode `1.18.23` binary. The caller
+must provide the exact path that contains both `agents/` and `skills/`, grant
+the listed write permissions, and pass only the Kimi credential required by the
+runner.
+
+```yaml
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  opencode:
+    uses: makeitworkcloud/shared-workflows/.github/workflows/opencode.yml@<immutable-commit-sha>
+    with:
+      config-source-path: opencode-server/files
+    secrets:
+      KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+```
+
+Do not use `secrets: inherit`: the reusable workflow requires only
+`KIMI_API_KEY`. The caller's event filter decides when the runner may execute;
+the runner does not configure cluster-only MCP integrations or deploy systems.
+
 ## Available Workflows
 
 | Workflow | Description |
 |----------|-------------|
 | `opentofu.yml` | OpenTofu/Terraform CI/CD with PR validation and an apply on every push to `main` |
+| `opencode.yml` | Comment-triggered OpenCode runner for caller-supplied agent and skill definitions |
 
 Same-repository PRs run tests and a credentialed plan; fork PRs run tests only. A push to `main` runs tests followed by a fresh apply, which does not reuse the PR plan.
 

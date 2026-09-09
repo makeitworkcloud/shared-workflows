@@ -81,10 +81,10 @@ drift.
 ## Available Workflows
 
 | Workflow | Description |
-|----------|-------------|
-| `opentofu.yml` | OpenTofu/Terraform CI/CD with PR validation and an apply on every push to `main` |
+|---|---|
+| `opentofu.yml` | OpenTofu/Terraform CI/CD with PR validation and an environment-gated apply on every push to `main` |
 
-Same-repository PRs run tests and a credentialed plan; fork PRs run tests only. A push to `main` runs tests followed by a fresh apply, which does not reuse the PR plan.
+Same-repository PRs run tests and a credentialed plan; fork PRs run tests only. A push to `main` runs tests followed by a fresh apply, which does not reuse the PR plan. The apply job uses the caller's `environment` input (default `production`); repository owners must configure that GitHub Environment with the required protection rules.
 
 ## Runners
 
@@ -100,5 +100,6 @@ See [images](https://github.com/makeitworkcloud/images) for container source and
 1. Grant `id-token: write` in the caller workflow so GitHub OIDC can authenticate the cloud provider.
 2. For AWS roots, ensure the default `aws-role-to-assume` exists (`arn:aws:iam::332355796717:role/github-actions-sops-kms`) or pass another role ARN.
 3. For GCP roots, pass both `gcp-workload-identity-provider` and `gcp-service-account`; this selects Google Workload Identity Federation instead of AWS credentials.
-4. Create caller workflow in `.github/workflows/`.
-5. Ensure repository has required files (e.g., `Makefile` with expected targets).
+4. Create the caller workflow in `.github/workflows/`.
+5. Create the GitHub Environment selected by `environment` (default `production`) and configure its required reviewers and protection rules before allowing a `main` apply.
+6. Ensure the repository has required files (e.g., `Makefile` with expected targets).

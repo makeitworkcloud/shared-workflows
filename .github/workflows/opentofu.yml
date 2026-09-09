@@ -204,7 +204,7 @@ jobs:
             const maxLength = 12000;
             const output = fs.existsSync('validation-output.txt')
               ? fs.readFileSync('validation-output.txt', 'utf8')
-                .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '')
+                .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
                 .replace(/\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g, '***REDACTED***')
                 .replace(/````/g, '\\`\\`\\`\\`')
               : 'No validation output was captured.';
@@ -376,6 +376,7 @@ jobs:
       contents: read
       id-token: write
     runs-on: ${{ inputs.runs-on }}
+    environment: ${{ inputs.environment }}
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [test]
     steps:
@@ -401,6 +402,7 @@ jobs:
           known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
       - name: OpenTofu Apply
         env:
+          OPENTOFU_ENVIRONMENT_GATED: "true"
           NAMECHEAP_API_KEY: ${{ secrets.NAMECHEAP_API_KEY }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: make apply

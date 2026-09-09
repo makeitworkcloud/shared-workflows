@@ -78,11 +78,49 @@ pre-commit drift fails the `test` job and the pull request branch must be
 updated manually. Fork pull requests never receive secrets and always fail on
 drift.
 
+### Stale pull request lifecycle
+
+`tfroot-github` owns the scheduled caller at
+`.github/workflows/stale-pull-requests.yml`; do not hand-maintain that path in
+a consumer repository. The reusable callee is
+`_stale-pull-requests.yml`.
+
+```yaml
+name: stale-pull-requests
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  stale:
+    uses: makeitworkcloud/shared-workflows/.github/workflows/_stale-pull-requests.yml@main
+    with:
+      dry-run: true
+```
+
+The caller must be on the consumer's default branch for scheduled execution.
+It accepts no secrets. The workflow reports only to its Actions log, and when
+`dry-run` is `false`, closes non-draft, unassigned, unmilestoned pull requests
+whose `pullRequest.updated_at` is at least 30 days old. Labels `do-not-close`,
+`blocked`, and `security` are exempt.
+
+After a successful close, it deletes only an unprotected same-repository head
+branch that is neither the default branch nor used as the head or base of any
+open pull request. GitHub's closed-pull-request **Restore branch** path is the
+recovery mechanism. Enable live mode only after a reviewed dry-run pilot.
+
 ## Available Workflows
 
 | Workflow | Description |
 |---|---|
 | `opentofu.yml` | OpenTofu/Terraform CI/CD with PR validation and an environment-gated apply on every push to `main` |
+| `_stale-pull-requests.yml` | Dry-run-first reusable lifecycle for closing pull requests inactive for at least 30 days and deleting only recoverable eligible head branches. |
 
 Same-repository PRs run tests and a credentialed plan; fork PRs run tests only. A push to `main` runs tests followed by a fresh apply, which does not reuse the PR plan. The apply job uses the caller's `environment` input (default `production`); repository owners must configure that GitHub Environment with the required protection rules.
 
@@ -100,6 +138,6 @@ See [images](https://github.com/makeitworkcloud/images) for container source and
 1. Grant `id-token: write` in the caller workflow so GitHub OIDC can authenticate the cloud provider.
 2. For AWS roots, ensure the default `aws-role-to-assume` exists (`arn:aws:iam::332355796717:role/github-actions-sops-kms`) or pass another role ARN.
 3. For GCP roots, pass both `gcp-workload-identity-provider` and `gcp-service-account`; this selects Google Workload Identity Federation instead of AWS credentials.
-4. Create the caller workflow in `.github/workflows/`.
+4. Create the caller workflow in `.github/workflows/.
 5. Create the GitHub Environment selected by `environment` (default `production`) and configure its required reviewers and protection rules before allowing a `main` apply.
 6. Ensure the repository has required files (e.g., `Makefile` with expected targets).

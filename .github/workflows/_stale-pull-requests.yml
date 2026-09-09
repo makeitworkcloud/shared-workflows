@@ -65,7 +65,7 @@ jobs:
                   issue.milestone ||
                   issue.assignees.length > 0 ||
                   hasExemptLabel ||
-                  Date.parse(issue.updated_at) > cutoff
+                  Date.parse(pullRequest.updated_at) > cutoff
                 ) {
                   continue;
                 }

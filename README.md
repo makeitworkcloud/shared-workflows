@@ -105,9 +105,10 @@ jobs:
 ```
 
 The caller must be on the consumer's default branch for scheduled execution.
-It accepts no secrets. The workflow reports, and when `dry-run` is `false`,
-closes non-draft, unassigned, unmilestoned pull requests with no update for at
-least 30 days. Labels `do-not-close`, `blocked`, and `security` are exempt.
+It accepts no secrets. The workflow reports only to its Actions log, and when
+`dry-run` is `false`, closes non-draft, unassigned, unmilestoned pull requests
+whose `pullRequest.updated_at` is at least 30 days old. Labels `do-not-close`,
+`blocked`, and `security` are exempt.
 
 After a successful close, it deletes only an unprotected same-repository head
 branch that is neither the default branch nor used as the head or base of any

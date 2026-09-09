@@ -83,6 +83,7 @@ drift.
 | Workflow | Description |
 |----------|-------------|
 | `opentofu.yml` | OpenTofu/Terraform CI/CD with PR validation and an apply on every push to `main` |
+| `stale-pull-requests.yml` | Closes pull requests after 30 days without activity and deletes only eligible recoverable same-repository head branches. |
 
 Same-repository PRs run tests and a credentialed plan; fork PRs run tests only. A push to `main` runs tests followed by a fresh apply, which does not reuse the PR plan.
 

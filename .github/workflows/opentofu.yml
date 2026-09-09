@@ -1,3 +1,405 @@
+name: opentofu
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: Environment for apply job
+        type: string
+        default: production
+      runs-on:
+        description: Runner label
+        type: string
+        default: arc-tf
+      setup-ssh:
+        description: Whether to setup SSH keys
+        type: boolean
+        default: false
+      aws-region:
+        description: AWS region for SOPS KMS access
+        type: string
+        default: us-west-2
+      aws-role-to-assume:
+        description: AWS IAM role to assume for SOPS KMS access
+        type: string
+        default: arn:aws:iam::332355796717:role/github-actions-sops-kms
+      gcp-workload-identity-provider:
+        description: Google Workload Identity Provider resource name
+        type: string
+        default: ""
+      gcp-service-account:
+        description: Google service account email to impersonate through Workload Identity Federation
+        type: string
+        default: ""
+    secrets:
+      SSH_PRIVATE_KEY:
+        required: false
+      SSH_KNOWN_HOSTS:
+        required: false
+      NAMECHEAP_API_KEY:
+        required: false
+      CLOUDFLARE_API_TOKEN:
+        required: false
+      CHART_UPDATER_GITHUB_APP_PRIVATE_KEY:
+        required: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      DOCS_APP_KEY_AVAILABLE: ${{ secrets.CHART_UPDATER_GITHUB_APP_PRIVATE_KEY != '' }}
+    runs-on: ${{ inputs.runs-on }}
+    steps:
+      - name: Mark test run in progress
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const marker = '<!-- opentofu-ci-status -->';
+            const workflowUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const { data: comments } = await github.rest.issues.listComments({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number });
+            const existing = comments.find((comment) => comment.body?.includes(marker));
+            let previous = '';
+            if (existing) {
+              if (existing.body.includes('this comment will be updated when the run completes')) {
+                const match = existing.body.match(/<details><summary>Previous run output<\/summary>\n\n([\s\S]*)\n\n<\/details>\s*$/);
+                previous = match ? match[1].trim() : '';
+              } else {
+                previous = existing.body.replace(marker, '').trim();
+              }
+            }
+            const parts = [
+              marker,
+              '#### OpenTofu Test',
+              '',
+              'OpenTofu test is in progress; this comment will be updated when the run completes.',
+              '',
+              `[View the workflow run](${workflowUrl}).`,
+            ];
+            if (previous) {
+              parts.push('', '<details><summary>Previous run output</summary>', '', previous, '', '</details>');
+            }
+            const body = parts.join('\n');
+            if (existing) {
+              await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body });
+            }
+      - name: Checkout
+        id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref || github.sha }}
+      - name: Fetch canonical pre-commit config
+        id: fetch-config
+        run: |
+          curl -sSL -o .pre-commit-config.yaml \
+            https://raw.githubusercontent.com/makeitworkcloud/images/main/tfroot-runner/pre-commit-config.yaml
+      - name: Initialize OpenTofu
+        id: initialize
+        run: tofu init -backend=false
+      - name: Run pre-commit
+        id: validation
+        run: |
+          set -o pipefail
+          SKIP=no-commit-to-branch pre-commit run --all-files --color=never 2>&1 | tee validation-output.txt
+      - name: Detect automatic pre-commit fixes
+        id: pre-commit-fixes
+        if: >-
+          always() && steps.validation.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          changed_files="$(
+            {
+              git diff --name-only
+              git diff --cached --name-only
+            } | sort -u
+          )"
+          if [ -z "$changed_files" ]; then
+            exit 0
+          fi
+          if [ "${{ github.event_name }}" != 'pull_request' ] || \
+             [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
+            echo 'Pre-commit applied fixes. Update the pull request branch.' >&2
+            exit 1
+          fi
+          echo 'changed=true' >> "$GITHUB_OUTPUT"
+      - name: Require GitHub App key for automatic pre-commit fixes
+        id: pre-commit-fixes-key
+        if: >-
+          always() &&
+          steps.pre-commit-fixes.outcome == 'success' &&
+          steps.pre-commit-fixes.outputs.changed == 'true' &&
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          env.DOCS_APP_KEY_AVAILABLE != 'true'
+        run: |
+          echo 'Pre-commit applied fixes and CHART_UPDATER_GITHUB_APP_PRIVATE_KEY is not available to commit them. Update the pull request branch.' >&2
+          exit 1
+      - name: Create GitHub App token for automatic pre-commit fixes
+        id: github-app-token
+        if: >-
+          always() &&
+          steps.pre-commit-fixes.outcome == 'success' &&
+          steps.pre-commit-fixes.outputs.changed == 'true' &&
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          env.DOCS_APP_KEY_AVAILABLE == 'true'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: '4745727'
+          private-key: ${{ secrets.CHART_UPDATER_GITHUB_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+      - name: Commit automatic pre-commit fixes
+        if: >-
+          always() &&
+          steps.pre-commit-fixes.outcome == 'success' &&
+          steps.pre-commit-fixes.outputs.changed == 'true' &&
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          env.DOCS_APP_KEY_AVAILABLE == 'true'
+        env:
+          GITHUB_APP_TOKEN: ${{ steps.github-app-token.outputs.token }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -u
+          git diff --cached --quiet && exit 0
+          git commit -m 'chore: apply pre-commit fixes'
+          git push "https://x-access-token:${GITHUB_APP_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:$PR_HEAD_REF"
+      - name: Report validation on pull request
+        if: >-
+          always() && github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          VALIDATION_FAILED: >-
+            ${{ steps.checkout.outcome == 'failure' ||
+                steps.fetch-config.outcome == 'failure' ||
+                steps.initialize.outcome == 'failure' ||
+                steps.validation.outcome == 'failure' ||
+                steps.pre-commit-fixes.outcome == 'failure' ||
+                steps.pre-commit-fixes-key.outcome == 'failure' }}
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- opentofu-ci-status -->';
+            const failed = process.env.VALIDATION_FAILED === 'true';
+            const workflowUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const maxLength = 12000;
+            const output = fs.existsSync('validation-output.txt')
+              ? fs.readFileSync('validation-output.txt', 'utf8')
+                .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
+                .replace(/\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g, '***REDACTED***')
+                .replace(/````/g, '\\`\\`\\`\\`')
+              : 'No validation output was captured.';
+            const excerpt = output.length > maxLength ? output.slice(-maxLength) : output;
+            const status = failed ? 'failed' : 'passed';
+            const body = [
+              marker,
+              '#### OpenTofu Test',
+              '',
+              `OpenTofu test ${status}.`,
+              '',
+              `[View the workflow run](${workflowUrl}).`,
+              '',
+              '<details><summary>View run output</summary>',
+              '',
+              '````text',
+              excerpt,
+              '````',
+              '',
+              '</details>',
+            ].join('\n');
+            const { data: comments } = await github.rest.issues.listComments({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number });
+            const existing = comments.find((comment) => comment.body?.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body });
+            }
+
+  plan:
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    runs-on: ${{ inputs.runs-on }}
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    needs: [test]
+    steps:
+      - name: Mark plan run in progress
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const marker = '<!-- opentofu-plan -->';
+            const workflowUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const { data: comments } = await github.rest.issues.listComments({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number });
+            const existing = comments.find((comment) => comment.body?.includes(marker));
+            let previous = '';
+            if (existing) {
+              if (existing.body.includes('this comment will be updated when the run completes')) {
+                const match = existing.body.match(/<details><summary>Previous run output<\/summary>\n\n([\s\S]*)\n\n<\/details>\s*$/);
+                previous = match ? match[1].trim() : '';
+              } else {
+                previous = existing.body.replace(marker, '').trim();
+              }
+            }
+            const parts = [
+              marker,
+              '#### OpenTofu Plan',
+              '',
+              'OpenTofu plan is in progress; this comment will be updated when the run completes.',
+              '',
+              `[View the workflow run](${workflowUrl}).`,
+            ];
+            if (previous) {
+              parts.push('', '<details><summary>Previous run output</summary>', '', previous, '', '</details>');
+            }
+            const body = parts.join('\n');
+            if (existing) {
+              await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body });
+            }
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+      - name: Configure AWS credentials for SOPS KMS
+        if: inputs.gcp-workload-identity-provider == ''
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ inputs.aws-role-to-assume }}
+          aws-region: ${{ inputs.aws-region }}
+      - name: Configure Google credentials through Workload Identity Federation
+        if: inputs.gcp-workload-identity-provider != ''
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ inputs.gcp-workload-identity-provider }}
+          service_account: ${{ inputs.gcp-service-account }}
+      - name: Install SSH key
+        if: ${{ inputs.setup-ssh }}
+        uses: shimataro/ssh-key-action@87a8f067114a8ce263df83e9ed5c849953548bc3 # v2.8.1
+        with:
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+      - name: OpenTofu Plan
+        id: plan
+        env:
+          NAMECHEAP_API_KEY: ${{ secrets.NAMECHEAP_API_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -o pipefail
+          export SHELLOPTS
+          set +e
+          make plan 2>&1 | tee plan-capture.txt
+          plan_exit_code=$?
+          set -e
+
+          if [ -s plan-capture.txt ]; then
+            sed -n "/OpenTofu will perform the following actions:/,/^Plan: /p" plan-capture.txt > plan-filtered.txt
+            if [ ! -s plan-filtered.txt ]; then
+              if ! grep -A 2 "No changes" plan-capture.txt > plan-filtered.txt; then
+                cp plan-capture.txt plan-filtered.txt
+              fi
+            fi
+          else
+            if [ "$plan_exit_code" -eq 0 ]; then
+              plan_exit_code=1
+            fi
+            echo "No plan output found" > plan-filtered.txt
+          fi
+
+          tr -d '\000' < plan-filtered.txt |
+            sed -E $'s/\x1B\[[0-?]*[ -\/]*[@-~]//g' |
+            sed -E \
+              -e '/(secret|token|password|private[_ -]?key|credential|authorization|access[_ -]?key|client[_ -]?secret|kubeconfig|sops)/I c\[REDACTED: potentially sensitive plan output]' \
+              > plan-filtered-redacted.txt
+          mv plan-filtered-redacted.txt plan-filtered.txt
+          printf 'exit-code=%s\n' "$plan_exit_code" >> "$GITHUB_OUTPUT"
+          tail -n 1000 plan-filtered.txt > plan-filtered-truncated.txt
+          mv plan-filtered-truncated.txt plan-filtered.txt
+      - name: prepare-comment
+        env:
+          PLAN_EXIT_CODE: ${{ steps.plan.outputs.exit-code }}
+        run: |
+          {
+            echo '<!-- opentofu-plan -->'
+            echo '#### OpenTofu Plan'
+            echo
+            if [ "$PLAN_EXIT_CODE" -ne 0 ]; then
+              echo "OpenTofu plan failed with exit code $PLAN_EXIT_CODE."
+            else
+              echo 'OpenTofu plan passed.'
+            fi
+            echo
+            echo "[View the workflow run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)."
+            echo
+            echo '<details><summary>View run output</summary>'
+            echo
+            echo '````diff'
+            cat plan-filtered.txt
+            echo '````'
+            echo
+            echo '</details>'
+          } > comment-body.md
+      - name: comment
+        uses: johanwulf/replace-comment@73e5abab2457a7742d94f71355f878f25e950c71 # v1.0.1
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body-includes: '<!-- opentofu-plan -->'
+          body-path: comment-body.md
+      - name: Fail if plan failed
+        if: steps.plan.outputs.exit-code != '0'
+        env:
+          PLAN_EXIT_CODE: ${{ steps.plan.outputs.exit-code }}
+        run: exit "$PLAN_EXIT_CODE"
+
+  apply:
+    permissions:
+      contents: read
+      id-token: write
+    runs-on: ${{ inputs.runs-on }}
+    environment: ${{ inputs.environment }}
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [test]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Configure AWS credentials for SOPS KMS
+        if: inputs.gcp-workload-identity-provider == ''
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ inputs.aws-role-to-assume }}
+          aws-region: ${{ inputs.aws-region }}
+      - name: Configure Google credentials through Workload Identity Federation
+        if: inputs.gcp-workload-identity-provider != ''
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ inputs.gcp-workload-identity-provider }}
+          service_account: ${{ inputs.gcp-service-account }}
+      - name: Install SSH key
+        if: ${{ inputs.setup-ssh }}
+        uses: shimataro/ssh-key-action@87a8f067114a8ce263df83e9ed5c849953548bc3 # v2.8.1
+        with:
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
       - name: OpenTofu Apply
         env:
           OPENTOFU_ENVIRONMENT_GATED: "true"

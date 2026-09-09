@@ -226,8 +226,6 @@ jobs:
               '',
               '</details>',
             ].join('\n');
-            const { data: comments } = await github.rest.issues.listComments({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number });
-            const existing = comments.find((comment) => comment.body?.includes(marker));
             if (existing) {
               await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body });
             } else {
@@ -376,6 +374,7 @@ jobs:
       contents: read
       id-token: write
     runs-on: ${{ inputs.runs-on }}
+    environment: ${{ inputs.environment }}
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [test]
     steps:

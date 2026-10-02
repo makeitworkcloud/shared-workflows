@@ -1,0 +1,151 @@
+---
+name: stale-pull-requests
+
+on:
+  workflow_call:
+    inputs:
+      dry-run:
+        description: Report eligible pull requests without closing or deleting them.
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Close inactive pull requests and delete recoverable branches
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          DRY_RUN: ${{ inputs.dry-run }}
+        with:
+          script: |
+            const inactiveForMs = 30 * 24 * 60 * 60 * 1000;
+            const cutoff = Date.now() - inactiveForMs;
+            const dryRun = process.env.DRY_RUN === 'true';
+            const exemptLabels = new Set(['do-not-close', 'blocked', 'security']);
+            const pullRequests = await github.paginate(github.rest.pulls.list, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              sort: 'updated',
+              direction: 'asc',
+              per_page: 100,
+            });
+            const { data: repository } = await github.rest.repos.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+
+            for (const { number } of pullRequests) {
+              try {
+                const [{ data: pullRequest }, { data: issue }] = await Promise.all([
+                  github.rest.pulls.get({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    pull_number: number,
+                  }),
+                  github.rest.issues.get({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: number,
+                  }),
+                ]);
+                const hasExemptLabel = issue.labels.some(
+                  ({ name }) => exemptLabels.has(name.toLowerCase()),
+                );
+
+                if (
+                  pullRequest.state !== 'open' ||
+                  pullRequest.draft ||
+                  issue.milestone ||
+                  issue.assignees.length > 0 ||
+                  hasExemptLabel ||
+                  Date.parse(pullRequest.updated_at) > cutoff
+                ) {
+                  continue;
+                }
+
+                if (dryRun) {
+                  core.info(`Would close inactive PR #${number}: ${pullRequest.title}`);
+                  continue;
+                }
+
+                await github.rest.pulls.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: number,
+                  state: 'closed',
+                });
+                const { data: closedPullRequest } = await github.rest.pulls.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: number,
+                });
+                if (closedPullRequest.state !== 'closed') {
+                  core.warning(`Skipping #${number}: the pull request did not close.`);
+                  continue;
+                }
+
+                const branch = closedPullRequest.head.ref;
+                if (closedPullRequest.head.repo?.full_name !== repository.full_name) {
+                  core.info(`Skipping branch deletion for #${number}: head branch is not in this repository.`);
+                  continue;
+                }
+                if (branch === repository.default_branch) {
+                  core.info(`Skipping branch deletion for #${number}: head branch is the default branch.`);
+                  continue;
+                }
+
+                let branchDetails;
+                try {
+                  ({ data: branchDetails } = await github.rest.repos.getBranch({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    branch,
+                  }));
+                } catch (error) {
+                  core.warning(`Skipping branch deletion for #${number}: cannot inspect ${branch}: ${error.message}`);
+                  continue;
+                }
+                if (branchDetails.protected) {
+                  core.info(`Skipping branch deletion for #${number}: ${branch} is protected.`);
+                  continue;
+                }
+
+                const [{ data: openHeadPullRequests }, { data: openBasePullRequests }] =
+                  await Promise.all([
+                    github.rest.pulls.list({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      state: 'open',
+                      head: `${context.repo.owner}:${branch}`,
+                      per_page: 1,
+                    }),
+                    github.rest.pulls.list({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      state: 'open',
+                      base: branch,
+                      per_page: 1,
+                    }),
+                  ]);
+                if (openHeadPullRequests.length > 0 || openBasePullRequests.length > 0) {
+                  core.info(`Skipping branch deletion for #${number}: ${branch} is used by an open pull request.`);
+                  continue;
+                }
+
+                await github.rest.git.deleteRef({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ref: `heads/${branch}`,
+                });
+                core.info(`Closed PR #${number} and deleted recoverable head branch ${branch}.`);
+              } catch (error) {
+                core.warning(`Skipping PR #${number} after an API error: ${error.message}`);
+              }
+            }

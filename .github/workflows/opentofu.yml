@@ -204,7 +204,7 @@ jobs:
             const maxLength = 12000;
             const output = fs.existsSync('validation-output.txt')
               ? fs.readFileSync('validation-output.txt', 'utf8')
-                .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '')
+                .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
                 .replace(/\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g, '***REDACTED***')
                 .replace(/````/g, '\\`\\`\\`\\`')
               : 'No validation output was captured.';
@@ -283,7 +283,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
       - name: Configure AWS credentials for SOPS KMS
         if: inputs.gcp-workload-identity-provider == ''
-        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6.2.4
         with:
           role-to-assume: ${{ inputs.aws-role-to-assume }}
           aws-region: ${{ inputs.aws-region }}
@@ -376,6 +376,7 @@ jobs:
       contents: read
       id-token: write
     runs-on: ${{ inputs.runs-on }}
+    environment: ${{ inputs.environment }}
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [test]
     steps:
@@ -383,7 +384,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Configure AWS credentials for SOPS KMS
         if: inputs.gcp-workload-identity-provider == ''
-        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6.2.4
         with:
           role-to-assume: ${{ inputs.aws-role-to-assume }}
           aws-region: ${{ inputs.aws-region }}
@@ -401,6 +402,7 @@ jobs:
           known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
       - name: OpenTofu Apply
         env:
+          OPENTOFU_ENVIRONMENT_GATED: "true"
           NAMECHEAP_API_KEY: ${{ secrets.NAMECHEAP_API_KEY }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: make apply

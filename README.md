@@ -115,12 +115,41 @@ branch that is neither the default branch nor used as the head or base of any
 open pull request. GitHub's closed-pull-request **Restore branch** path is the
 recovery mechanism. Enable live mode only after a reviewed dry-run pilot.
 
+### OpenCode
+
+The OpenCode workflow is called from a repository-local, comment-triggered
+workflow. It checks out the caller repository, stages that repository's agent
+and skill definitions, and runs a pinned OpenCode `1.18.23` binary. The caller
+must provide the exact path that contains both `agents/` and `skills/`, grant
+the listed write permissions, and pass only the Kimi credential required by the
+runner.
+
+```yaml
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  opencode:
+    uses: makeitworkcloud/shared-workflows/.github/workflows/opencode.yml@<immutable-commit-sha>
+    with:
+      config-source-path: opencode-server/files
+    secrets:
+      KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+```
+
+Do not use `secrets: inherit`: the reusable workflow requires only
+`KIMI_API_KEY`. The caller's event filter decides when the runner may execute;
+the runner does not configure cluster-only MCP integrations or deploy systems.
+
 ## Available Workflows
 
 | Workflow | Description |
 |---|---|
 | `opentofu.yml` | OpenTofu/Terraform CI/CD with PR validation and an environment-gated apply on every push to `main` |
 | `_stale-pull-requests.yml` | Dry-run-first reusable lifecycle for closing pull requests inactive for at least 30 days and deleting only recoverable eligible head branches. |
+| `opencode.yml` | Comment-triggered OpenCode runner for caller-supplied agent and skill definitions |
 
 Same-repository PRs run tests and a credentialed plan; fork PRs run tests only. A push to `main` runs tests followed by a fresh apply, which does not reuse the PR plan. The apply job uses the caller's `environment` input (default `production`); repository owners must configure that GitHub Environment with the required protection rules.
 

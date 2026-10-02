@@ -1,0 +1,112 @@
+name: opencode
+
+on:
+  workflow_call:
+    inputs:
+      config-source-path:
+        description: Path in the caller repository containing agents/ and skills/
+        required: true
+        type: string
+    secrets:
+      KIMI_API_KEY:
+        description: Kimi provider credential for the OpenCode runner
+        required: true
+
+permissions: {}
+
+jobs:
+  opencode:
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout caller repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          # opencode github run uses the caller token for its final git push.
+          persist-credentials: true
+
+      - name: Stage OpenCode runner configuration
+        env:
+          CONFIG_DIR: ${{ runner.temp }}/opencode-config
+          CONFIG_SOURCE_PATH: ${{ inputs.config-source-path }}
+        run: |
+          set -euo pipefail
+          source_dir="$GITHUB_WORKSPACE/$CONFIG_SOURCE_PATH"
+          test -d "$source_dir/agents"
+          test -d "$source_dir/skills"
+          rm -rf "$CONFIG_DIR"
+          mkdir -p "$CONFIG_DIR"
+          jq -n \
+            --arg model "kimi-for-coding/k3" \
+            --arg default_agent "makeitwork" \
+            '{
+              "$schema": "https://opencode.ai/config.json",
+              autoupdate: false,
+              model: $model,
+              default_agent: $default_agent,
+              enabled_providers: ["kimi-for-coding"],
+              provider: {
+                "kimi-for-coding": {
+                  options: {
+                    apiKey: "{env:KIMI_API_KEY}"
+                  }
+                }
+              },
+              mcp: {},
+              permission: {
+                question: "deny",
+                external_directory: "deny"
+              }
+            }' > "$CONFIG_DIR/opencode.json"
+          cat > "$CONFIG_DIR/AGENTS.md" <<'EOF'
+          # GitHub Actions OpenCode runner instructions
+
+          You are running in an ephemeral GitHub Actions runner with a checkout of
+          the repository that triggered this workflow. Apply that repository's
+          `AGENTS.md` and task-relevant documentation before editing files.
+
+          ## Runner boundary
+
+          - The production OpenCode server's Kubernetes MCP proxies are intentionally
+            not configured here. Do not assume cluster, AWS, Argo CD, Grafana,
+            Kubernetes, or SSH access.
+          - Treat secrets, tokens, decrypted values, private keys, kubeconfigs, state,
+            and sensitive plan output as unavailable. Never add them to repository
+            files, logs, issues, pull requests, or comments.
+          - Do not deploy, publish, merge, dispatch another workflow, or mutate a live
+            system. Propose such work for explicit confirmation.
+          - Make changes only in the checked-out repository. Do not create, push, or
+            open pull requests manually: `opencode github run` handles branch and pull
+            request delivery after the session completes.
+          - The workflow supplies GitHub event context and authentication. Do not claim
+            that an unavailable GitHub MCP or other MCP integration was used.
+
+          ## Validation and reporting
+
+          Use the repository's authoritative CI and guidance. Report only checks and
+          outcomes actually available from the workflow; distinguish authored changes
+          from validation, publication, deployment, and functional verification.
+          EOF
+          cp -R "$source_dir/agents" "$source_dir/skills" "$CONFIG_DIR"/
+          printf 'OPENCODE_CONFIG_DIR=%s\n' "$CONFIG_DIR" >> "$GITHUB_ENV"
+
+      - name: Install pinned OpenCode runtime
+        run: |
+          set -euo pipefail
+          curl -fsSL https://raw.githubusercontent.com/anomalyco/opencode/ef2880f379129aa048be9e9353e30aa168d42c17/install |
+            bash -s -- --version 1.18.23 --no-modify-path
+          printf '%s\n' "$HOME/.opencode/bin" >> "$GITHUB_PATH"
+
+      - name: Run OpenCode
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          MODEL: kimi-for-coding/k3
+          MENTIONS: /opencode,/oc
+          SHARE: "false"
+          USE_GITHUB_TOKEN: "true"
+        run: opencode github run

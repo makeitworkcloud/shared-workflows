@@ -34,9 +34,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      REVIEW_DIR: ${{ runner.temp }}/opencode-review
       REVIEW_MODEL: ${{ inputs.model }}
     steps:
+      - name: Set isolated review directory
+        run: echo "REVIEW_DIR=$RUNNER_TEMP/opencode-review" >> "$GITHUB_ENV"
+
       - name: Authorize snapshot
         id: snapshot
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0

@@ -283,8 +283,13 @@ jobs:
             } catch { body = ''; }
             const url = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const heading = `OpenCode advisory review - head \`${process.env.HEAD}\`, base \`${process.env.BASE}\`. [Workflow run](${url}).\n\n`;
+            const rendered = body.split(/\r\n?|\n/).map(line => `    ${line}`).join('\n');
+            if (Buffer.byteLength(heading + rendered) > 60000) {
+              body = '';
+              reason = 'Rendered review exceeds the 60000 byte comment bound.';
+            }
             const output = heading + (body
-              ? body.split(/\r\n?|\n/).map(line => `    ${line}`).join('\n')
+              ? rendered
               : `${reason}\n\nNo successful review is claimed. No raw logs or provider errors are published.\n\nREVIEW_INCOMPLETE`);
             fs.mkdirSync(work, { recursive: true });
             fs.writeFileSync(path.join(work, 'comment.md'), output);

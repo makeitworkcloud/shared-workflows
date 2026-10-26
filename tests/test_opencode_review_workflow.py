@@ -293,6 +293,16 @@ class ReviewWorkflowTests(unittest.TestCase):
                 self.assertIn('\n    ![image]', body)
                 self.assertIn('\n    @mention', body)
 
+    def test_rendering_expansion_and_unicode_cannot_exceed_comment_bound(self):
+        for payload in ['x\n' * 10000, '\U0001f600' * 15000]:
+            with self.subTest(kind='newlines' if payload.startswith('x') else 'unicode'):
+                self.stream(payload + '\nREVIEW_COMPLETE')
+                self.run_step('result')
+                body = (self.work / 'comment.md').read_bytes()
+                self.assertLess(len(body), 60000)
+                self.assertIn(b'REVIEW_INCOMPLETE', body)
+                self.assertIn(b'comment bound', body)
+
     def test_workflow_contract_is_disabled_pinned_and_bounded(self):
         inputs = WORKFLOW['on']['workflow_call']['inputs']
         self.assertEqual(inputs['enabled']['default'], 'false')

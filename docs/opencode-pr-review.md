@@ -86,6 +86,9 @@ are rendered as inert indented text, preventing model-generated images, links,
 or mentions from becoming active comment markup. The final model line must be
 exactly `REVIEW_COMPLETE` or `REVIEW_INCOMPLETE`; missing/invalid/oversized output
 is incomplete, not silently truncated. Completion does not mean no defects.
+The rendered comment, including indentation and snapshot attribution, is also
+bounded to 60000 bytes; an expanded or multibyte result over that limit is
+reported incomplete without publishing partial findings.
 
 This path selects official npm `@opencode/cli@2.1.4`, Node 24, checkout 7.0.1,
 setup-node 7.1.0, github-script 9.0.0, and sticky-pull-request-comment 3.0.5.

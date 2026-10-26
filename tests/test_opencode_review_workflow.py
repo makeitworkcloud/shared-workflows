@@ -46,7 +46,7 @@ const mockRequire = name => name === 'child_process' ? {
   },
 } : require(name);
 new Function('require', 'github', 'context', 'core',
-  'return (async () => {' + input.script + '\n'})()'
+  'return (async () => {' + input.script + '\n})()'
 )(mockRequire, github, input.context, core).then(
   () => process.stdout.write(JSON.stringify(output)),
   error => process.stdout.write(JSON.stringify({...output, error: error.message})),

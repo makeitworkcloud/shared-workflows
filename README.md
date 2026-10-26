@@ -121,6 +121,7 @@ recovery mechanism. Enable live mode only after a reviewed dry-run pilot.
 |---|---|
 | `opentofu.yml` | OpenTofu/Terraform CI/CD with PR validation and an environment-gated apply on every push to `main` |
 | `_stale-pull-requests.yml` | Dry-run-first reusable lifecycle for closing pull requests inactive for at least 30 days and deleting only recoverable eligible head branches. |
+| `_opencode-review.yml` | Disabled-by-default advisory OpenCode PR review; see [docs](docs/opencode-pr-review.md). |
 
 Same-repository PRs run tests and a credentialed plan; fork PRs run tests only. A push to `main` runs tests followed by a fresh apply, which does not reuse the PR plan. The apply job uses the caller's `environment` input (default `production`); repository owners must configure that GitHub Environment with the required protection rules.
 

@@ -1,0 +1,22 @@
+name: opencode-review-pilot
+
+on:
+  pull_request:
+    types: [synchronize]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: write
+
+jobs:
+  pilot:
+    if: >-
+      github.event.pull_request.number == 49 && github.actor == 'xnoto' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    uses: ./.github/workflows/_opencode-review.yml
+    with:
+      enabled: true
+      model: openai/gpt-6.1-sol
+    secrets:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

@@ -12,6 +12,8 @@ Pass `model` (`provider/model`), explicitly map `OPENAI_API_KEY`, and grant
 `contents: read`, `pull-requests: read`, and `issues: write`. This credential
 interface supports OpenAI models; other providers need their own secret mapping.
 No OpenCode GitHub App installation or OIDC permission is required.
+Checkout retains the contents-read/issues-write GitHub token for the upstream
+runner's Git fetches, as required by its token-mode setup for private repositories.
 
 Both `enabled: true` and `OPENCODE_REVIEW_ENABLED=true` are required. The default
 is disabled; required caller inputs/secrets still apply to a disabled invocation.
@@ -35,7 +37,10 @@ green Actions checks do not establish completed review coverage or merge approva
   latest CLI and its nested cache action uses a tag. These are upstream behavior,
   not a fully immutable dependency chain.
 
-The built-in `plan` agent and advisory prompt are not a security sandbox.
+The pinned runner ignores the action's `agent` input. The workflow uses the
+documented `OPENCODE_CONFIG_CONTENT` runtime override to set `default_agent` to
+`plan` instead; see [V1 configuration](https://opencode.ai/docs/config/#default-agent).
+This selects an agent, not a security sandbox or isolation from repository config.
 Repository configuration/plugins and provider-key exposure require a separately
 authorized security pilot before enabling. The token cannot write repository
 contents; provider credentials must never be exposed to untrusted execution.

@@ -33,14 +33,14 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: false
+          persist-credentials: true
       - uses: anomalyco/opencode/github@148842ef7cb1bc34192b3fff57d0f9721ab9c801 # v1.19.4
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
+          OPENCODE_CONFIG_CONTENT: '{"$schema":"https://opencode.ai/config.json","default_agent":"plan"}'
         with:
           model: ${{ inputs.model }}
-          agent: plan
           use_github_token: true
           prompt: |
             Review this pull request for correctness, security, and regressions.
